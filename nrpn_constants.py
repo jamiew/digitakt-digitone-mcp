@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Digitakt II MIDI CC and NRPN Constants (OS 1.03)
+Digitakt (original) MIDI CC and NRPN Constants
 
-Source: Digitakt II User Manual OS 1.03, Appendix B
+Source: Digitakt User Manual, Appendix A
+Reference: https://midi.guide/d/elektron/digitakt/
 
 NRPNs provide access to more parameters than standard MIDI CCs.
 Each NRPN requires sending 4 CC messages to set a value.
@@ -12,6 +13,10 @@ Structure:
   LSB (CC 98) = Parameter
   Data Entry MSB (CC 6) = Value (0-127)
   Data Entry LSB (CC 38) = Fine value (usually 0)
+
+NOTE: Digitakt 1 has 8 audio tracks (not 16 like Digitakt II)
+      Digitakt 1 has only 1 LFO (not 3 like Digitakt II)
+      Digitakt 1 has no Chorus effect
 """
 
 # ============================================================================
@@ -20,45 +25,99 @@ Structure:
 
 class TrackCC:
     """Track-level CC parameters"""
-    MUTE = 94
+    SOLO = 93
+    MUTE = 94  # Global mute
     LEVEL = 95
+    PATTERN_MUTE = 110
+
 
 class SourceCC:
     """Source/sample CC parameters"""
     TUNE = 16
     PLAY_MODE = 17
+    BIT_REDUCTION = 18
     SAMPLE_SLOT = 19
     SAMPLE_START = 20
     SAMPLE_LENGTH = 21
     SAMPLE_LOOP = 22
     SAMPLE_LEVEL = 23
-    SAMPLE_BANK = 24
+
 
 class FilterCC:
-    """Filter envelope CC parameters (separate from AMP)"""
+    """Filter envelope CC parameters"""
     ATTACK = 70
     DECAY = 71
     SUSTAIN = 72
     RELEASE = 73
     FREQUENCY = 74
+    RESONANCE = 75
+    TYPE = 76
     ENV_DEPTH = 77
 
+
 class AmpCC:
-    """AMP envelope CC parameters (separate from Filter)"""
-    ATTACK = 79
-    HOLD = 80    # Unique to AMP envelope
-    DECAY = 81
-    SUSTAIN = 82
-    RELEASE = 83
-    VOLUME = 89
-    PAN = 90
+    """AMP envelope CC parameters - NOTE: Different from Digitakt II!"""
+    ATTACK = 78      # CC 78 (not 79 like DT2)
+    HOLD = 79        # CC 79 (not 80 like DT2)
+    DECAY = 80       # CC 80 (not 81 like DT2)
+    OVERDRIVE = 81   # CC 81 - Overdrive is in AMP section on DT1
+    DELAY_SEND = 82  # CC 82 - Delay send is in AMP section on DT1
+    REVERB_SEND = 83 # CC 83 - Reverb send is in AMP section on DT1
+    PAN = 10         # CC 10 (not 90 like DT2)
+    VOLUME = 7       # CC 7 (not 89 like DT2)
+
 
 class FXCC:
-    """Effects send CC parameters"""
-    CHORUS_SEND = 12
-    DELAY_SEND = 84
-    REVERB_SEND = 85
-    OVERDRIVE = 57
+    """Effects CC parameters - NOTE: No Chorus on Digitakt 1!"""
+    # FX sends are in AmpCC on Digitakt 1
+    DELAY_SEND = 82  # Same as AmpCC.DELAY_SEND
+    REVERB_SEND = 83 # Same as AmpCC.REVERB_SEND
+    # No Chorus on Digitakt 1!
+
+
+class TrigCC:
+    """Trig CC parameters"""
+    NOTE = 3
+    VELOCITY = 4
+    LENGTH = 5
+    FILTER_TRIG = 13
+    LFO_TRIG = 14
+
+
+class LfoCC:
+    """LFO CC parameters - Only 1 LFO on Digitakt 1"""
+    SPEED = 102
+    MULTIPLIER = 103
+    FADE = 104
+    DESTINATION = 105
+    WAVEFORM = 106
+    START_PHASE = 107
+    TRIG_MODE = 108
+    DEPTH = 109  # Also uses CC 118 for LSB
+
+
+class DelayCC:
+    """Delay FX CC parameters"""
+    TIME = 85
+    PINGPONG = 86
+    STEREO_WIDTH = 87
+    FEEDBACK = 88
+    HPF = 89
+    LPF = 90
+    REVERB_SEND = 91
+    MIX = 92
+
+
+class ReverbCC:
+    """Reverb FX CC parameters"""
+    PREDELAY = 24
+    DECAY = 25
+    SHELVING_FREQ = 2
+    SHELVING_GAIN = 27
+    HPF = 28
+    LPF = 29
+    MIX = 31
+
 
 # ============================================================================
 # NRPN CONSTANTS
@@ -70,6 +129,7 @@ class NRPN_MSB:
     FX = 2
     TRIG_NOTE_VEL_LEN = 3
 
+
 # Track Parameters (MSB 1)
 class TrackParams:
     MSB = 1
@@ -78,6 +138,7 @@ class TrackParams:
     SOLO = 102
     PATTERN_MUTE = 104
 
+
 # Trig Parameters (MSB 3 for note/velocity/length)
 class TrigParams:
     MSB = 3
@@ -85,19 +146,19 @@ class TrigParams:
     VELOCITY = 1
     LENGTH = 2
 
-# Source Parameters (MSB 1, LSB 0-9)
-# Based on Digitakt II MIDI Implementation (Oneshot machine)
+
+# Source Parameters (MSB 1, LSB 0-7)
 class SourceParams:
     MSB = 1
     TUNE = 0
-    FINE_TUNE = 1
-    # Sample Slot = NRPN LSB 8 (full range 0-16383 across banks)
-    SAMPLE_START = 4    # Also available as CC 20
-    SAMPLE_LENGTH = 5   # Also available as CC 21
-    SAMPLE_LOOP = 6     # Also available as CC 22
-    SAMPLE_LEVEL = 7    # Also available as CC 23
-    SAMPLE_SLOT = 8     # Also available as CC 19
-    SAMPLE_BANK = 9     # Also available as CC 24
+    PLAY_MODE = 1
+    BIT_REDUCTION = 2
+    SAMPLE_SLOT = 3
+    SAMPLE_START = 4
+    SAMPLE_LENGTH = 5
+    SAMPLE_LOOP = 6
+    SAMPLE_LEVEL = 7
+
 
 # Filter Parameters (MSB 1, LSB 16-23)
 class FilterParams:
@@ -111,57 +172,38 @@ class FilterParams:
     TYPE = 22
     ENVELOPE_DEPTH = 23
 
-# Amp Parameters (MSB 1, LSB 30-39)
+
+# Amp Parameters (MSB 1, LSB 24-31)
+# NOTE: Different layout from Digitakt II
 class AmpParams:
     MSB = 1
-    ATTACK = 30
-    HOLD = 31
-    DECAY = 32
-    SUSTAIN = 33
-    RELEASE = 34
-    CHORUS_SEND = 35
-    DELAY_SEND = 36
-    REVERB_SEND = 37
-    PAN = 38
-    VOLUME = 39
-    MODE = 40
-    ENV_RESET = 41
+    ATTACK = 24
+    HOLD = 25
+    DECAY = 26
+    OVERDRIVE = 27
+    DELAY_SEND = 28
+    REVERB_SEND = 29
+    PAN = 30
+    VOLUME = 31
 
-# LFO 1 Parameters (MSB 1, LSB 42-49)
-class LFO1Params:
-    MSB = 1
-    SPEED = 42
-    MULTIPLIER = 43
-    FADE = 44
-    DESTINATION = 45
-    WAVEFORM = 46
-    START_PHASE = 47
-    TRIG_MODE = 48
-    DEPTH = 49
 
-# LFO 2 Parameters (MSB 1, LSB 50-57)
-class LFO2Params:
+# LFO Parameters (MSB 1, LSB 32-39)
+# NOTE: Digitakt 1 has only ONE LFO (not 3 like Digitakt II)
+class LFOParams:
     MSB = 1
-    SPEED = 50
-    MULTIPLIER = 51
-    FADE = 52
-    DESTINATION = 53
-    WAVEFORM = 54
-    START_PHASE = 55
-    TRIG_MODE = 56
-    DEPTH = 57
+    SPEED = 32
+    MULTIPLIER = 33
+    FADE = 34
+    DESTINATION = 35
+    WAVEFORM = 36
+    START_PHASE = 37
+    TRIG_MODE = 38
+    DEPTH = 39
 
-# LFO 3 Parameters (MSB 1, LSB 58-65 + 70-72)
-class LFO3Params:
-    MSB = 1
-    SPEED = 58
-    MULTIPLIER = 59
-    FADE = 60
-    DESTINATION = 61
-    WAVEFORM = 62
-    START_PHASE = 70
-    TRIG_MODE = 71
-    DEPTH = 72
+
+# Alias for compatibility - Digitakt 1 only has one LFO
+LFO1Params = LFOParams
+
 
 # Delay FX Parameters (MSB 2, LSB 0-7)
 class DelayParams:
@@ -175,6 +217,7 @@ class DelayParams:
     REVERB_SEND = 6
     MIX = 7
 
+
 # Reverb FX Parameters (MSB 2, LSB 8-15)
 class ReverbParams:
     MSB = 2
@@ -186,16 +229,13 @@ class ReverbParams:
     LPF = 13
     MIX = 15
 
-# Chorus FX Parameters (MSB 2, LSB 41-47)
+
+# NOTE: No Chorus on Digitakt 1!
+# Keeping this empty class for code compatibility
 class ChorusParams:
     MSB = 2
-    DEPTH = 41
-    SPEED = 42
-    HPF = 43
-    WIDTH = 44
-    DELAY_SEND = 45
-    REVERB_SEND = 46
-    MIX = 47
+    # No chorus on Digitakt 1
+
 
 # Helper dictionary for parameter names
 NRPN_PARAMS = {
@@ -209,12 +249,12 @@ NRPN_PARAMS = {
     (3, 2): "Trig Length",
 
     (1, 0): "Source Tune",
-    (1, 1): "Source Fine Tune",
-    (1, 2): "Sample Slot",
-    (1, 3): "Sample Start",
-    (1, 4): "Sample Length",
-    (1, 5): "Sample Loop",
-    (1, 6): "Sample Volume",
+    (1, 1): "Source Play Mode",
+    (1, 2): "Source Bit Reduction",
+    (1, 3): "Sample Slot",
+    (1, 4): "Sample Start",
+    (1, 5): "Sample Length",
+    (1, 6): "Sample Loop",
     (1, 7): "Sample Level",
 
     (1, 16): "Filter Attack",
@@ -226,45 +266,23 @@ NRPN_PARAMS = {
     (1, 22): "Filter Type",
     (1, 23): "Filter Envelope Depth",
 
-    (1, 30): "Amp Attack",
-    (1, 31): "Amp Hold",
-    (1, 32): "Amp Decay",
-    (1, 33): "Amp Sustain",
-    (1, 34): "Amp Release",
-    (1, 35): "Chorus Send",
-    (1, 36): "Delay Send",
-    (1, 37): "Reverb Send",
-    (1, 38): "Pan",
-    (1, 39): "Volume",
-    (1, 40): "Amp Mode",
-    (1, 41): "Amp Env Reset",
+    (1, 24): "Amp Attack",
+    (1, 25): "Amp Hold",
+    (1, 26): "Amp Decay",
+    (1, 27): "Amp Overdrive",
+    (1, 28): "Delay Send",
+    (1, 29): "Reverb Send",
+    (1, 30): "Pan",
+    (1, 31): "Volume",
 
-    (1, 42): "LFO1 Speed",
-    (1, 43): "LFO1 Multiplier",
-    (1, 44): "LFO1 Fade",
-    (1, 45): "LFO1 Destination",
-    (1, 46): "LFO1 Waveform",
-    (1, 47): "LFO1 Start Phase",
-    (1, 48): "LFO1 Trig Mode",
-    (1, 49): "LFO1 Depth",
-
-    (1, 50): "LFO2 Speed",
-    (1, 51): "LFO2 Multiplier",
-    (1, 52): "LFO2 Fade",
-    (1, 53): "LFO2 Destination",
-    (1, 54): "LFO2 Waveform",
-    (1, 55): "LFO2 Start Phase",
-    (1, 56): "LFO2 Trig Mode",
-    (1, 57): "LFO2 Depth",
-
-    (1, 58): "LFO3 Speed",
-    (1, 59): "LFO3 Multiplier",
-    (1, 60): "LFO3 Fade",
-    (1, 61): "LFO3 Destination",
-    (1, 62): "LFO3 Waveform",
-    (1, 70): "LFO3 Start Phase",
-    (1, 71): "LFO3 Trig Mode",
-    (1, 72): "LFO3 Depth",
+    (1, 32): "LFO Speed",
+    (1, 33): "LFO Multiplier",
+    (1, 34): "LFO Fade",
+    (1, 35): "LFO Destination",
+    (1, 36): "LFO Waveform",
+    (1, 37): "LFO Start Phase",
+    (1, 38): "LFO Trig Mode",
+    (1, 39): "LFO Depth",
 
     (2, 0): "Delay Time",
     (2, 1): "Delay Pingpong",
@@ -282,15 +300,8 @@ NRPN_PARAMS = {
     (2, 12): "Reverb HPF",
     (2, 13): "Reverb LPF",
     (2, 15): "Reverb Mix",
-
-    (2, 41): "Chorus Depth",
-    (2, 42): "Chorus Speed",
-    (2, 43): "Chorus HPF",
-    (2, 44): "Chorus Width",
-    (2, 45): "Chorus Delay Send",
-    (2, 46): "Chorus Reverb Send",
-    (2, 47): "Chorus Mix",
 }
+
 
 def get_param_name(msb: int, lsb: int) -> str:
     """Get the human-readable name for an NRPN parameter"""
