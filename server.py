@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """
-MCP Server for Digitakt II MIDI Control
-Provides tools to send MIDI messages to the Elektron Digitakt II
+MCP Server for Digitakt (original) MIDI Control
+Provides tools to send MIDI messages to the Elektron Digitakt
+
+NOTE: This is for the original Digitakt, NOT Digitakt II.
+Key differences from Digitakt II:
+- 8 audio tracks (not 16)
+- 8 MIDI tracks (separate from audio tracks)
+- Only 1 LFO (not 3)
+- No Chorus effect
+- Different AMP CC numbers (Volume=7, Pan=10)
 """
 
 import asyncio
 import mido
+import time
 from typing import Optional
 from mcp.server import Server
 from mcp.types import Tool, TextContent, Resource
@@ -16,8 +25,8 @@ import os
 from pathlib import Path
 from nrpn_constants import (
     NRPN_MSB, TrackParams, TrigParams, SourceParams,
-    FilterParams, AmpParams, LFO1Params, LFO2Params, LFO3Params,
-    DelayParams, ReverbParams, ChorusParams,
+    FilterParams, AmpParams, LFO1Params,
+    DelayParams, ReverbParams,
     get_param_name
 )
 from parameter_map import (
@@ -30,7 +39,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("digitakt-midi-server")
 
 # MIDI port name - will be auto-detected
-DIGITAKT_PORT_NAME = "Elektron Digitakt II"
+# Digitakt 1 appears as "Elektron Digitakt" (without "II")
+DIGITAKT_PORT_NAME = "Elektron Digitakt"
 
 # Preset directory (for automation presets)
 PRESET_DIR = Path.home() / ".mcp-config" / "digitakt" / "presets"
@@ -39,6 +49,10 @@ PRESET_DIR.mkdir(parents=True, exist_ok=True)
 # Pattern directory (for full patterns)
 PATTERN_DIR = Path.home() / ".mcp-config" / "digitakt" / "patterns"
 PATTERN_DIR.mkdir(parents=True, exist_ok=True)
+
+# Recordings directory (for MIDI recordings)
+RECORDINGS_DIR = Path.home() / ".mcp-config" / "digitakt" / "recordings"
+RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Create server instance
 server = Server("digitakt-midi-server")
@@ -82,6 +96,60 @@ def connect_midi():
     except Exception as e:
         logger.error(f"Error connecting to MIDI: {e}")
 
+
+# ============================================================================
+# MIDI LOGGING HELPERS
+# ============================================================================
+
+def note_name(note: int) -> str:
+    """Convert MIDI note number to name (e.g., 60 -> C4)"""
+    names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    octave = (note // 12) - 1
+    return f"{names[note % 12]}{octave}"
+
+
+def log_note_on(note: int, velocity: int, channel: int):
+    """Log a note on message"""
+    if note < 8:
+        logger.info(f"🥁 NOTE ON  Track {note+1} vel={velocity} ch={channel+1}")
+    else:
+        logger.info(f"🎹 NOTE ON  {note_name(note)} ({note}) vel={velocity} ch={channel+1}")
+
+
+def log_note_off(note: int, channel: int):
+    """Log a note off message"""
+    if note < 8:
+        logger.debug(f"   NOTE OFF Track {note+1} ch={channel+1}")
+    else:
+        logger.debug(f"   NOTE OFF {note_name(note)} ({note}) ch={channel+1}")
+
+
+def log_cc(cc: int, value: int, channel: int, param_name: str = None):
+    """Log a CC message"""
+    if param_name:
+        logger.info(f"🎛️  CC {cc:3d} = {value:3d}  ch={channel+1}  ({param_name})")
+    else:
+        logger.info(f"🎛️  CC {cc:3d} = {value:3d}  ch={channel+1}")
+
+
+def log_nrpn(msb: int, lsb: int, value: int, channel: int, param_name: str = None):
+    """Log an NRPN message"""
+    if param_name:
+        logger.info(f"🎚️  NRPN {msb}:{lsb} = {value:3d}  ch={channel+1}  ({param_name})")
+    else:
+        logger.info(f"🎚️  NRPN {msb}:{lsb} = {value:3d}  ch={channel+1}")
+
+
+def log_transport(msg_type: str):
+    """Log a transport message"""
+    logger.info(f"🚀 TRANSPORT: {msg_type}")
+
+
+def log_program_change(program: int, channel: int):
+    """Log a program change"""
+    logger.info(f"📀 PROGRAM CHANGE: {program}  ch={channel+1}")
+
+
 def send_parameter_change(param_name: str, value: int, channel: int = 0):
     """
     Send a parameter change via CC or NRPN
@@ -95,12 +163,14 @@ def send_parameter_change(param_name: str, value: int, channel: int = 0):
         # Send CC message
         msg = mido.Message('control_change', control=param_info["cc"], value=value, channel=channel)
         output_port.send(msg)
+        log_cc(param_info["cc"], value, channel, param_name)
     elif param_info["type"] == "nrpn":
         # Send NRPN message (4 CC messages)
         output_port.send(mido.Message('control_change', control=99, value=param_info["msb"], channel=channel))
         output_port.send(mido.Message('control_change', control=98, value=param_info["lsb"], channel=channel))
         output_port.send(mido.Message('control_change', control=6, value=value, channel=channel))
         output_port.send(mido.Message('control_change', control=38, value=0, channel=channel))
+        log_nrpn(param_info["msb"], param_info["lsb"], value, channel, param_name)
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
@@ -108,7 +178,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="send_note",
-            description="Send a MIDI note on/off message to the Digitakt. To trigger one-shots on specific tracks, use notes 0-7 (Track 1-8). To play the active track chromatically, use notes 12-84.",
+            description="Send a MIDI note on/off message to the Digitakt. To trigger one-shots on specific audio tracks, use notes 0-7 (Track 1-8). To play the active track chromatically, use notes 12-84.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -144,15 +214,15 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="trigger_track",
-            description="Trigger a one-shot sample on a specific Digitakt II track (1-16). This is a convenience wrapper that sends the correct MIDI note (0-15) to trigger the track.",
+            description="Trigger a one-shot sample on a specific Digitakt track (1-8). This is a convenience wrapper that sends the correct MIDI note (0-7) to trigger the track.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "track": {
                         "type": "integer",
-                        "description": "Track number (1-16). Tracks 1-16 correspond to MIDI notes 0-15.",
+                        "description": "Track number (1-8). Tracks 1-8 correspond to MIDI notes 0-7.",
                         "minimum": 1,
-                        "maximum": 16
+                        "maximum": 8
                     },
                     "velocity": {
                         "type": "integer",
@@ -418,7 +488,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="reset_velocities",
-            description="Reset trig velocity to a default value (120) on all 16 tracks. Useful after DAWs like Logic reset velocities to 0 when quitting.",
+            description="Reset trig velocity to a default value (120) on all 8 audio tracks. Useful after DAWs like Logic reset velocities to 0 when quitting.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -521,7 +591,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "triggers": {
                         "type": "array",
-                        "description": "Array of [beat, track, velocity] where beat is 0-based quarter note (0=start, 1=beat 2, etc), track is 1-16, velocity is 1-127.",
+                        "description": "Array of [beat, track, velocity] where beat is 0-based quarter note (0=start, 1=beat 2, etc), track is 1-8, velocity is 1-127.",
                         "items": {
                             "type": "array",
                             "minItems": 2,
@@ -652,7 +722,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "track_triggers": {
                         "type": "array",
-                        "description": "Array of [beat, track, velocity] or [beat, track, velocity, note] where beat is 0-based quarter note, track is 1-16, velocity is 1-127, and optional note is MIDI note 0-127 for chromatic triggering (if omitted, uses track number as note for standard triggering).",
+                        "description": "Array of [beat, track, velocity] or [beat, track, velocity, note] where beat is 0-based quarter note, track is 1-8, velocity is 1-127, and optional note is MIDI note 0-127 for chromatic triggering (if omitted, uses track number as note for standard triggering).",
                         "items": {
                             "type": "array",
                             "minItems": 2,
@@ -718,7 +788,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "track_triggers": {
                         "type": "array",
-                        "description": "Array of [beat, track, velocity] or [beat, track, velocity, note] for Digitakt drum tracks where beat is 0-based quarter note, track is 1-16, velocity is 1-127, and optional note is MIDI note 0-127 for chromatic triggering (if omitted, uses track number as note for standard triggering).",
+                        "description": "Array of [beat, track, velocity] or [beat, track, velocity, note] for Digitakt drum tracks where beat is 0-based quarter note, track is 1-8, velocity is 1-127, and optional note is MIDI note 0-127 for chromatic triggering (if omitted, uses track number as note for standard triggering).",
                         "items": {
                             "type": "array",
                             "minItems": 2,
@@ -967,7 +1037,7 @@ Default is 0 (no looping - automation plays once).""",
                     },
                     "track_triggers": {
                         "type": "array",
-                        "description": "Optional array of [beat, track, velocity] where beat is 0-based quarter note, track is 1-16, velocity is 1-127.",
+                        "description": "Optional array of [beat, track, velocity] where beat is 0-based quarter note, track is 1-8, velocity is 1-127.",
                         "items": {
                             "type": "array",
                             "minItems": 2,
@@ -1023,7 +1093,7 @@ Default is 0 (no looping - automation plays once).""",
                     },
                     "channel": {
                         "type": "integer",
-                        "description": "MIDI channel (1-16). IMPORTANT: On Digitakt II, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
+                        "description": "MIDI channel (1-16). IMPORTANT: On Digitakt, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
                         "default": 1
@@ -1074,7 +1144,7 @@ Default is 0 (no looping - automation plays once).""",
                     },
                     "channel": {
                         "type": "integer",
-                        "description": "MIDI channel (1-16). IMPORTANT: On Digitakt II, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
+                        "description": "MIDI channel (1-16). IMPORTANT: On Digitakt, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
                         "default": 1
@@ -1123,7 +1193,7 @@ Default is 0 (no looping - automation plays once).""",
                     },
                     "channel": {
                         "type": "integer",
-                        "description": "MIDI channel (1-16). IMPORTANT: On Digitakt II, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
+                        "description": "MIDI channel (1-16). IMPORTANT: On Digitakt, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
                         "default": 1
@@ -1153,7 +1223,7 @@ Default is 0 (no looping - automation plays once).""",
                     },
                     "track_triggers": {
                         "type": "array",
-                        "description": "Optional array of [beat, track, velocity] where beat is 0-based quarter note, track is 1-16, velocity is 1-127.",
+                        "description": "Optional array of [beat, track, velocity] where beat is 0-based quarter note, track is 1-8, velocity is 1-127.",
                         "items": {
                             "type": "array",
                             "minItems": 2,
@@ -1177,7 +1247,7 @@ Default is 0 (no looping - automation plays once).""",
                     },
                     "channel": {
                         "type": "integer",
-                        "description": "MIDI channel (1-16). IMPORTANT: On Digitakt II, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
+                        "description": "MIDI channel (1-16). IMPORTANT: On Digitakt, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
                         "default": 1
@@ -1548,6 +1618,101 @@ Default is 0 (no looping - automation plays once).""",
                 },
                 "required": ["pattern_name", "track", "beats"]
             }
+        ),
+        Tool(
+            name="monitor_midi_input",
+            description="Listen for incoming MIDI messages from the Digitakt for a specified duration. Shows notes played, knob movements (CC), transport, etc. Useful for seeing what the Digitakt is sending.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "duration_sec": {
+                        "type": "number",
+                        "description": "How long to listen for MIDI input in seconds. Default is 5 seconds.",
+                        "minimum": 0.5,
+                        "maximum": 60,
+                        "default": 5
+                    },
+                    "filter_clock": {
+                        "type": "boolean",
+                        "description": "Filter out MIDI clock messages (they're very frequent). Default is true.",
+                        "default": True
+                    }
+                }
+            }
+        ),
+        Tool(
+            name="record_midi_input",
+            description="Record incoming MIDI from the Digitakt to a .mid file. Press pads, turn knobs, play sequences - everything gets captured with timing. Perfect for capturing performances or patterns.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Output filename (e.g., 'my_recording.mid'). Saved to ~/.mcp-config/digitakt/recordings/"
+                    },
+                    "duration_sec": {
+                        "type": "number",
+                        "description": "How long to record in seconds. Default is 30 seconds.",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "default": 30
+                    },
+                    "bpm": {
+                        "type": "number",
+                        "description": "BPM for the MIDI file (for tempo track). Default is 120.",
+                        "minimum": 20,
+                        "maximum": 300,
+                        "default": 120
+                    },
+                    "filter_clock": {
+                        "type": "boolean",
+                        "description": "Filter out MIDI clock messages. Default is true.",
+                        "default": True
+                    },
+                    "stop_on_silence": {
+                        "type": "number",
+                        "description": "Stop recording after this many seconds of no MIDI activity. 0 = disabled. Default is 0.",
+                        "minimum": 0,
+                        "maximum": 60,
+                        "default": 0
+                    }
+                },
+                "required": ["filename"]
+            }
+        ),
+        Tool(
+            name="play_midi_file",
+            description="Play a .mid file back through the Digitakt. Sends all MIDI events (notes, CCs, etc.) with correct timing.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "MIDI file to play. Can be a full path or just filename (searches in ~/.mcp-config/digitakt/recordings/)"
+                    },
+                    "tempo_scale": {
+                        "type": "number",
+                        "description": "Scale the tempo (1.0 = original, 0.5 = half speed, 2.0 = double speed). Default is 1.0.",
+                        "minimum": 0.1,
+                        "maximum": 4.0,
+                        "default": 1.0
+                    },
+                    "send_transport": {
+                        "type": "boolean",
+                        "description": "Send MIDI Start before and Stop after playback. Default is false.",
+                        "default": False
+                    }
+                },
+                "required": ["filename"]
+            }
+        ),
+        Tool(
+            name="list_midi_recordings",
+            description="List all MIDI recordings in the recordings directory.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
         )
     ]
 
@@ -1577,6 +1742,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Send note on
             msg_on = mido.Message('note_on', note=note, velocity=velocity, channel=channel)
             output_port.send(msg_on)
+            log_note_on(note, velocity, channel)
 
             # Wait for duration
             await asyncio.sleep(duration)
@@ -1584,6 +1750,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Send note off
             msg_off = mido.Message('note_off', note=note, velocity=0, channel=channel)
             output_port.send(msg_off)
+            log_note_off(note, channel)
 
             return [TextContent(
                 type="text",
@@ -1602,6 +1769,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Send note on
             msg_on = mido.Message('note_on', note=note, velocity=velocity, channel=channel)
             output_port.send(msg_on)
+            log_note_on(note, velocity, channel)
 
             # Wait for duration
             await asyncio.sleep(duration)
@@ -1609,6 +1777,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Send note off
             msg_off = mido.Message('note_off', note=note, velocity=0, channel=channel)
             output_port.send(msg_off)
+            log_note_off(note, channel)
 
             return [TextContent(
                 type="text",
@@ -1622,6 +1791,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             msg = mido.Message('control_change', control=cc_number, value=value, channel=channel)
             output_port.send(msg)
+            log_cc(cc_number, value, channel)
 
             return [TextContent(
                 type="text",
@@ -1634,6 +1804,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             msg = mido.Message('program_change', program=program, channel=channel)
             output_port.send(msg)
+            log_program_change(program, channel)
 
             return [TextContent(
                 type="text",
@@ -1760,6 +1931,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             output_port.send(msg4)
 
             param_name = get_param_name(msb, lsb)
+            log_nrpn(msb, lsb, value, channel, param_name)
 
             return [TextContent(
                 type="text",
@@ -1814,8 +1986,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         elif name == "reset_velocities":
             velocity = arguments.get("velocity", 120)
 
-            # Set trig velocity on all 16 tracks using NRPN
-            for track in range(1, 17):
+            # Set trig velocity on all 8 audio tracks using NRPN
+            for track in range(1, 9):  # Digitakt 1 has 8 audio tracks
                 channel = track - 1  # Track 1 = channel 0, etc.
 
                 # NRPN MSB=3, LSB=1 for trig velocity
@@ -1826,13 +1998,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             return [TextContent(
                 type="text",
-                text=f"Reset velocity to {velocity} on all 16 tracks"
+                text=f"Reset velocity to {velocity} on all 8 audio tracks"
             )]
 
         elif name == "send_midi_start":
             # Send MIDI Start message (0xFA)
             msg = mido.Message('start')
             output_port.send(msg)
+            log_transport("START")
 
             return [TextContent(
                 type="text",
@@ -1843,6 +2016,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Send MIDI Stop message (0xFC)
             msg = mido.Message('stop')
             output_port.send(msg)
+            log_transport("STOP")
 
             return [TextContent(
                 type="text",
@@ -1853,6 +2027,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Send MIDI Continue message (0xFB)
             msg = mido.Message('continue')
             output_port.send(msg)
+            log_transport("CONTINUE")
 
             return [TextContent(
                 type="text",
@@ -1866,6 +2041,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Position is in MIDI beats (16th notes)
             msg = mido.Message('songpos', pos=position)
             output_port.send(msg)
+            logger.info(f"📍 SONG POSITION: {position} (bar {position/16:.2f})")
 
             return [TextContent(
                 type="text",
@@ -1884,8 +2060,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             clock_interval = 60.0 / (bpm * 24)
             total_pulses = int(bars * 96)  # 96 pulses per bar in 4/4
 
+            logger.info(f"▶️  PLAY: {bars} bars @ {bpm} BPM ({total_pulses} clock pulses)")
+
             # Send Start message
             output_port.send(mido.Message('start'))
+            log_transport("START")
 
             # Use absolute timing to prevent drift
             import time
@@ -1905,6 +2084,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Optionally send Stop
             if send_stop:
                 output_port.send(mido.Message('stop'))
+                log_transport("STOP")
                 status = "and stopped"
             else:
                 status = "(still running)"
@@ -1932,13 +2112,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 track = trigger[1]
                 velocity = trigger[2] if len(trigger) > 2 else 100
                 pulse_index = int(beat * 24)  # 24 pulses per quarter note
-                trigger_schedule.append((pulse_index, track, velocity))
+                trigger_schedule.append((pulse_index, track, velocity, beat))
 
             # Sort by pulse index
             trigger_schedule.sort(key=lambda x: x[0])
 
+            logger.info(f"▶️  PLAY PATTERN: {bars} bars @ {bpm} BPM, {len(triggers)} triggers")
+
             # Send Start message
             output_port.send(mido.Message('start'))
+            log_transport("START")
 
             import time
             start_time = time.time()
@@ -1950,9 +2133,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
                 # Check if we need to send any triggers at this pulse
                 while trigger_idx < len(trigger_schedule) and trigger_schedule[trigger_idx][0] == i:
-                    pulse, track, velocity = trigger_schedule[trigger_idx]
-                    note = track - 1  # Track 1-16 = note 0-15
+                    pulse, track, velocity, beat = trigger_schedule[trigger_idx]
+                    note = track - 1  # Track 1-8 = note 0-7
                     output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=0))
+                    log_note_on(note, velocity, 0)
                     # Schedule note off after short duration
                     asyncio.create_task(_delayed_note_off(note, 0.05, 0))
                     trigger_idx += 1
@@ -1967,6 +2151,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Optionally send Stop
             if send_stop:
                 output_port.send(mido.Message('stop'))
+                log_transport("STOP")
                 status = "and stopped"
             else:
                 status = "(still running)"
@@ -2008,8 +2193,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Sort by pulse index
             note_schedule.sort(key=lambda x: x[0])
 
+            logger.info(f"▶️  PLAY MELODY: {bars} bars @ {bpm} BPM, {len(notes)} notes on ch={channel+1}")
+
             # Send Start message
             output_port.send(mido.Message('start'))
+            log_transport("START")
 
             import time
             start_time = time.time()
@@ -2023,6 +2211,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 while note_idx < len(note_schedule) and note_schedule[note_idx][0] == i:
                     pulse, note, velocity, duration = note_schedule[note_idx]
                     output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=channel))
+                    log_note_on(note, velocity, channel)
                     # Schedule note off after duration
                     asyncio.create_task(_delayed_note_off(note, duration, channel))
                     note_idx += 1
@@ -2037,6 +2226,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Optionally send Stop
             if send_stop:
                 output_port.send(mido.Message('stop'))
+                log_transport("STOP")
                 status = "and stopped"
             else:
                 status = "(still running)"
@@ -3872,6 +4062,302 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
                 result += f"Total: {len(get_all_parameters())} parameters\n"
                 result += f"\nUse 'category' parameter to filter by category."
+
+            return [TextContent(type="text", text=result)]
+
+        elif name == "record_midi_input":
+            filename = arguments["filename"]
+            duration_sec = arguments.get("duration_sec", 30)
+            bpm = arguments.get("bpm", 120)
+            filter_clock = arguments.get("filter_clock", True)
+            stop_on_silence = arguments.get("stop_on_silence", 0)
+
+            if not input_port:
+                return [TextContent(
+                    type="text",
+                    text="Error: Not connected to Digitakt MIDI input port"
+                )]
+
+            # Ensure filename has .mid extension
+            if not filename.endswith('.mid'):
+                filename += '.mid'
+
+            filepath = RECORDINGS_DIR / filename
+
+            logger.info(f"⏺️  RECORDING to {filename} for up to {duration_sec}s @ {bpm} BPM...")
+
+            # Create MIDI file
+            mid = mido.MidiFile(ticks_per_beat=480)
+
+            # Add tempo track
+            tempo_track = mido.MidiTrack()
+            mid.tracks.append(tempo_track)
+            tempo_track.name = "Tempo"
+            # Set tempo (microseconds per beat)
+            tempo_track.append(mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(bpm), time=0))
+            tempo_track.append(mido.MetaMessage('end_of_track', time=0))
+
+            # Add recording track
+            track = mido.MidiTrack()
+            mid.tracks.append(track)
+            track.name = "Digitakt Recording"
+
+            import time
+            start_time = time.time()
+            last_msg_time = start_time
+            last_tick = 0
+            msg_count = 0
+
+            # Ticks per second at this tempo
+            ticks_per_sec = 480 * bpm / 60
+
+            # Clear any pending messages
+            while input_port.poll():
+                input_port.receive(block=False)
+
+            # Record loop
+            while time.time() - start_time < duration_sec:
+                msg = input_port.poll()
+                if msg:
+                    now = time.time()
+                    elapsed = now - start_time
+                    last_msg_time = now
+
+                    # Filter clock if requested
+                    if filter_clock and msg.type == 'clock':
+                        continue
+
+                    # Skip sysex and meta messages for now
+                    if msg.type in ('sysex', 'quarter_frame', 'songpos', 'song_select', 'tune_request'):
+                        continue
+
+                    # Calculate tick position
+                    current_tick = int(elapsed * ticks_per_sec)
+                    delta_ticks = current_tick - last_tick
+                    last_tick = current_tick
+
+                    # Log what we're recording
+                    if msg.type == 'note_on':
+                        log_note_on(msg.note, msg.velocity, msg.channel)
+                    elif msg.type == 'control_change':
+                        log_cc(msg.control, msg.value, msg.channel)
+
+                    # Add message to track with delta time
+                    track.append(msg.copy(time=delta_ticks))
+                    msg_count += 1
+
+                # Check for silence timeout
+                if stop_on_silence > 0 and (time.time() - last_msg_time) > stop_on_silence:
+                    logger.info(f"⏹️  Stopping due to {stop_on_silence}s of silence")
+                    break
+
+                await asyncio.sleep(0.001)
+
+            # End the track
+            track.append(mido.MetaMessage('end_of_track', time=0))
+
+            # Save the file
+            mid.save(str(filepath))
+
+            elapsed = time.time() - start_time
+            logger.info(f"⏹️  RECORDED {msg_count} messages in {elapsed:.1f}s -> {filename}")
+
+            return [TextContent(
+                type="text",
+                text=f"Recorded {msg_count} MIDI messages in {elapsed:.1f}s\n" +
+                     f"Saved to: {filepath}\n\n" +
+                     f"Use play_midi_file to play it back!"
+            )]
+
+        elif name == "play_midi_file":
+            filename = arguments["filename"]
+            tempo_scale = arguments.get("tempo_scale", 1.0)
+            send_transport = arguments.get("send_transport", False)
+
+            # Find the file
+            filepath = Path(filename)
+            if not filepath.exists():
+                # Try in recordings directory
+                filepath = RECORDINGS_DIR / filename
+                if not filepath.exists():
+                    # Try adding .mid extension
+                    filepath = RECORDINGS_DIR / (filename + ".mid")
+
+            if not filepath.exists():
+                return [TextContent(
+                    type="text",
+                    text=f"Error: MIDI file not found: {filename}\n" +
+                         f"Searched in: {RECORDINGS_DIR}"
+                )]
+
+            logger.info(f"▶️  PLAYING {filepath.name} (tempo scale: {tempo_scale}x)")
+
+            # Load the MIDI file
+            mid = mido.MidiFile(str(filepath))
+
+            # Send transport start if requested
+            if send_transport:
+                output_port.send(mido.Message('start'))
+                log_transport("START")
+
+            msg_count = 0
+            import time
+
+            # Play the file
+            for msg in mid.play():
+                # Apply tempo scaling to sleep time
+                if hasattr(msg, 'time') and msg.time > 0:
+                    await asyncio.sleep(msg.time / tempo_scale)
+
+                # Skip meta messages
+                if msg.is_meta:
+                    continue
+
+                # Send the message
+                output_port.send(msg)
+                msg_count += 1
+
+                # Log what we're playing
+                if msg.type == 'note_on':
+                    log_note_on(msg.note, msg.velocity, msg.channel)
+                elif msg.type == 'control_change':
+                    log_cc(msg.control, msg.value, msg.channel)
+
+            # Send transport stop if requested
+            if send_transport:
+                output_port.send(mido.Message('stop'))
+                log_transport("STOP")
+
+            logger.info(f"⏹️  FINISHED playing {msg_count} messages")
+
+            return [TextContent(
+                type="text",
+                text=f"Played {msg_count} MIDI messages from {filepath.name}"
+            )]
+
+        elif name == "list_midi_recordings":
+            recordings = list(RECORDINGS_DIR.glob("*.mid"))
+
+            if not recordings:
+                return [TextContent(
+                    type="text",
+                    text=f"No recordings found in {RECORDINGS_DIR}\n\n" +
+                         "Use record_midi_input to create a recording!"
+                )]
+
+            result = f"MIDI Recordings ({len(recordings)} files):\n"
+            result += f"Location: {RECORDINGS_DIR}\n\n"
+
+            for filepath in sorted(recordings):
+                # Get file info
+                stat = filepath.stat()
+                size_kb = stat.st_size / 1024
+                mtime = time.strftime('%Y-%m-%d %H:%M', time.localtime(stat.st_mtime))
+
+                # Try to get duration from MIDI file
+                try:
+                    mid = mido.MidiFile(str(filepath))
+                    duration = mid.length
+                    duration_str = f"{duration:.1f}s"
+                except:
+                    duration_str = "?"
+
+                result += f"  📄 {filepath.name}\n"
+                result += f"     {size_kb:.1f}KB | {duration_str} | {mtime}\n"
+
+            return [TextContent(type="text", text=result)]
+
+        elif name == "monitor_midi_input":
+            duration_sec = arguments.get("duration_sec", 5)
+            filter_clock = arguments.get("filter_clock", True)
+
+            if not input_port:
+                return [TextContent(
+                    type="text",
+                    text="Error: Not connected to Digitakt MIDI input port"
+                )]
+
+            logger.info(f"👂 MONITORING MIDI INPUT for {duration_sec}s...")
+
+            import time
+            start_time = time.time()
+            messages = []
+
+            # Clear any pending messages
+            while input_port.poll():
+                input_port.receive(block=False)
+
+            # Listen for messages
+            while time.time() - start_time < duration_sec:
+                msg = input_port.poll()
+                if msg:
+                    elapsed = time.time() - start_time
+
+                    # Filter out clock if requested
+                    if filter_clock and msg.type == 'clock':
+                        continue
+
+                    # Format message for display
+                    if msg.type == 'note_on':
+                        if msg.note < 8:
+                            msg_str = f"🥁 NOTE ON  Track {msg.note+1} vel={msg.velocity} ch={msg.channel+1}"
+                        else:
+                            msg_str = f"🎹 NOTE ON  {note_name(msg.note)} ({msg.note}) vel={msg.velocity} ch={msg.channel+1}"
+                        logger.info(msg_str)
+                    elif msg.type == 'note_off':
+                        if msg.note < 8:
+                            msg_str = f"   NOTE OFF Track {msg.note+1} ch={msg.channel+1}"
+                        else:
+                            msg_str = f"   NOTE OFF {note_name(msg.note)} ({msg.note}) ch={msg.channel+1}"
+                        logger.debug(msg_str)
+                    elif msg.type == 'control_change':
+                        msg_str = f"🎛️  CC {msg.control:3d} = {msg.value:3d}  ch={msg.channel+1}"
+                        logger.info(msg_str)
+                    elif msg.type == 'program_change':
+                        msg_str = f"📀 PROGRAM CHANGE: {msg.program}  ch={msg.channel+1}"
+                        logger.info(msg_str)
+                    elif msg.type == 'start':
+                        msg_str = "🚀 TRANSPORT: START"
+                        logger.info(msg_str)
+                    elif msg.type == 'stop':
+                        msg_str = "🚀 TRANSPORT: STOP"
+                        logger.info(msg_str)
+                    elif msg.type == 'continue':
+                        msg_str = "🚀 TRANSPORT: CONTINUE"
+                        logger.info(msg_str)
+                    elif msg.type == 'songpos':
+                        msg_str = f"📍 SONG POSITION: {msg.pos}"
+                        logger.info(msg_str)
+                    elif msg.type == 'clock':
+                        msg_str = "⏱️  CLOCK"
+                        # Don't log clock - too frequent
+                    elif msg.type == 'sysex':
+                        msg_str = f"📦 SYSEX: {len(msg.data)} bytes"
+                        logger.info(msg_str)
+                    else:
+                        msg_str = f"❓ {msg.type}: {msg}"
+                        logger.info(msg_str)
+
+                    messages.append({"time": f"{elapsed:.3f}s", "message": msg_str})
+
+                await asyncio.sleep(0.001)  # Small sleep to prevent busy loop
+
+            logger.info(f"👂 DONE monitoring - received {len(messages)} messages")
+
+            # Build result
+            if messages:
+                result = f"Received {len(messages)} MIDI messages in {duration_sec}s:\n\n"
+                for m in messages[:50]:  # Limit to first 50 messages
+                    result += f"[{m['time']}] {m['message']}\n"
+                if len(messages) > 50:
+                    result += f"\n... and {len(messages) - 50} more messages"
+            else:
+                result = f"No MIDI messages received in {duration_sec}s.\n\n"
+                result += "Tips:\n"
+                result += "- Press pads on the Digitakt to send notes\n"
+                result += "- Turn knobs (make sure MIDI OUT CC is enabled in settings)\n"
+                result += "- Press Play/Stop for transport messages\n"
+                result += "- Change patterns for program changes"
 
             return [TextContent(type="text", text=result)]
 
