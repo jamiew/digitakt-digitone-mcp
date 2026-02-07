@@ -23,8 +23,10 @@ NOTE: Digitakt 1 has 8 audio tracks (not 16 like Digitakt II)
 # MIDI CC CONSTANTS
 # ============================================================================
 
+
 class TrackCC:
     """Track-level CC parameters"""
+
     SOLO = 93
     MUTE = 94  # Global mute
     LEVEL = 95
@@ -33,6 +35,7 @@ class TrackCC:
 
 class SourceCC:
     """Source/sample CC parameters"""
+
     TUNE = 16
     PLAY_MODE = 17
     BIT_REDUCTION = 18
@@ -45,6 +48,7 @@ class SourceCC:
 
 class FilterCC:
     """Filter envelope CC parameters"""
+
     ATTACK = 70
     DECAY = 71
     SUSTAIN = 72
@@ -57,26 +61,29 @@ class FilterCC:
 
 class AmpCC:
     """AMP envelope CC parameters - NOTE: Different from Digitakt II!"""
-    ATTACK = 78      # CC 78 (not 79 like DT2)
-    HOLD = 79        # CC 79 (not 80 like DT2)
-    DECAY = 80       # CC 80 (not 81 like DT2)
-    OVERDRIVE = 81   # CC 81 - Overdrive is in AMP section on DT1
+
+    ATTACK = 78  # CC 78 (not 79 like DT2)
+    HOLD = 79  # CC 79 (not 80 like DT2)
+    DECAY = 80  # CC 80 (not 81 like DT2)
+    OVERDRIVE = 81  # CC 81 - Overdrive is in AMP section on DT1
     DELAY_SEND = 82  # CC 82 - Delay send is in AMP section on DT1
-    REVERB_SEND = 83 # CC 83 - Reverb send is in AMP section on DT1
-    PAN = 10         # CC 10 (not 90 like DT2)
-    VOLUME = 7       # CC 7 (not 89 like DT2)
+    REVERB_SEND = 83  # CC 83 - Reverb send is in AMP section on DT1
+    PAN = 10  # CC 10 (not 90 like DT2)
+    VOLUME = 7  # CC 7 (not 89 like DT2)
 
 
 class FXCC:
     """Effects CC parameters - NOTE: No Chorus on Digitakt 1!"""
+
     # FX sends are in AmpCC on Digitakt 1
     DELAY_SEND = 82  # Same as AmpCC.DELAY_SEND
-    REVERB_SEND = 83 # Same as AmpCC.REVERB_SEND
+    REVERB_SEND = 83  # Same as AmpCC.REVERB_SEND
     # No Chorus on Digitakt 1!
 
 
 class TrigCC:
     """Trig CC parameters"""
+
     NOTE = 3
     VELOCITY = 4
     LENGTH = 5
@@ -86,6 +93,7 @@ class TrigCC:
 
 class LfoCC:
     """LFO CC parameters - Only 1 LFO on Digitakt 1"""
+
     SPEED = 102
     MULTIPLIER = 103
     FADE = 104
@@ -98,6 +106,7 @@ class LfoCC:
 
 class DelayCC:
     """Delay FX CC parameters"""
+
     TIME = 85
     PINGPONG = 86
     STEREO_WIDTH = 87
@@ -110,6 +119,7 @@ class DelayCC:
 
 class ReverbCC:
     """Reverb FX CC parameters"""
+
     PREDELAY = 24
     DECAY = 25
     SHELVING_FREQ = 2
@@ -122,6 +132,7 @@ class ReverbCC:
 # ============================================================================
 # NRPN CONSTANTS
 # ============================================================================
+
 
 # NRPN MSB Categories
 class NRPN_MSB:
@@ -243,11 +254,9 @@ NRPN_PARAMS = {
     (1, 101): "Global Mute",
     (1, 102): "Solo",
     (1, 104): "Pattern Mute",
-
     (3, 0): "Trig Note",
     (3, 1): "Trig Velocity",
     (3, 2): "Trig Length",
-
     (1, 0): "Source Tune",
     (1, 1): "Source Play Mode",
     (1, 2): "Source Bit Reduction",
@@ -256,7 +265,6 @@ NRPN_PARAMS = {
     (1, 5): "Sample Length",
     (1, 6): "Sample Loop",
     (1, 7): "Sample Level",
-
     (1, 16): "Filter Attack",
     (1, 17): "Filter Decay",
     (1, 18): "Filter Sustain",
@@ -265,7 +273,6 @@ NRPN_PARAMS = {
     (1, 21): "Filter Resonance",
     (1, 22): "Filter Type",
     (1, 23): "Filter Envelope Depth",
-
     (1, 24): "Amp Attack",
     (1, 25): "Amp Hold",
     (1, 26): "Amp Decay",
@@ -274,7 +281,6 @@ NRPN_PARAMS = {
     (1, 29): "Reverb Send",
     (1, 30): "Pan",
     (1, 31): "Volume",
-
     (1, 32): "LFO Speed",
     (1, 33): "LFO Multiplier",
     (1, 34): "LFO Fade",
@@ -283,7 +289,6 @@ NRPN_PARAMS = {
     (1, 37): "LFO Start Phase",
     (1, 38): "LFO Trig Mode",
     (1, 39): "LFO Depth",
-
     (2, 0): "Delay Time",
     (2, 1): "Delay Pingpong",
     (2, 2): "Delay Stereo Width",
@@ -292,7 +297,6 @@ NRPN_PARAMS = {
     (2, 5): "Delay LPF",
     (2, 6): "Delay Reverb Send",
     (2, 7): "Delay Mix",
-
     (2, 8): "Reverb Predelay",
     (2, 9): "Reverb Decay",
     (2, 10): "Reverb Shelving Freq",

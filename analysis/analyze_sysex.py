@@ -5,7 +5,9 @@ Usage: python analyze_sysex.py <file.syx>
 """
 
 import sys
+
 import mido
+
 
 def analyze_sysex_file(filepath):
     """Analyze a SysEx file and display its contents"""
@@ -23,7 +25,7 @@ def analyze_sysex_file(filepath):
             print("-" * 80)
 
             for msg in track:
-                if msg.type == 'sysex':
+                if msg.type == "sysex":
                     sysex_count += 1
                     data = msg.data
 
@@ -32,7 +34,7 @@ def analyze_sysex_file(filepath):
 
                     # Check if it's an Elektron message
                     if len(data) >= 3 and data[0:3] == [0x00, 0x20, 0x3C]:
-                        print(f"  Manufacturer: Elektron (00 20 3C)")
+                        print("  Manufacturer: Elektron (00 20 3C)")
 
                         if len(data) >= 4:
                             device_id = data[3]
@@ -45,9 +47,9 @@ def analyze_sysex_file(filepath):
                         print(f"  Manufacturer: {' '.join([f'{b:02X}' for b in data[0:3]])}")
 
                     # Display first 32 bytes in hex
-                    print(f"\n  Data (hex):")
+                    print("\n  Data (hex):")
                     for i in range(0, min(len(data), 64), 16):
-                        chunk = data[i:i+16]
+                        chunk = data[i : i + 16]
                         hex_str = " ".join([f"{b:02X}" for b in chunk])
                         ascii_str = "".join([chr(b) if 32 <= b < 127 else "." for b in chunk])
                         print(f"    {i:04X}: {hex_str:<48}  {ascii_str}")
@@ -67,7 +69,7 @@ def analyze_sysex_file(filepath):
 
         # Try reading as raw .syx file
         try:
-            with open(filepath, 'rb') as f:
+            with open(filepath, "rb") as f:
                 data = f.read()
 
             print(f"File size: {len(data)} bytes")
@@ -85,7 +87,7 @@ def analyze_sysex_file(filepath):
 
                     if end < len(data):
                         msg_count += 1
-                        sysex_data = data[i+1:end]  # Exclude F0 and F7
+                        sysex_data = data[i + 1 : end]  # Exclude F0 and F7
 
                         print(f"\nSysEx Message #{msg_count}:")
                         print(f"  Offset: 0x{i:04X}")
@@ -93,16 +95,16 @@ def analyze_sysex_file(filepath):
 
                         # Check manufacturer
                         if len(sysex_data) >= 3 and sysex_data[0:3] == bytes([0x00, 0x20, 0x3C]):
-                            print(f"  Manufacturer: Elektron (00 20 3C)")
+                            print("  Manufacturer: Elektron (00 20 3C)")
                             if len(sysex_data) >= 4:
                                 print(f"  Device ID: 0x{sysex_data[3]:02X}")
                             if len(sysex_data) >= 5:
                                 print(f"  Command: 0x{sysex_data[4]:02X}")
 
                         # Display first 64 bytes
-                        print(f"\n  Data (hex):")
+                        print("\n  Data (hex):")
                         for j in range(0, min(len(sysex_data), 64), 16):
-                            chunk = sysex_data[j:j+16]
+                            chunk = sysex_data[j : j + 16]
                             hex_str = " ".join([f"{b:02X}" for b in chunk])
                             ascii_str = "".join([chr(b) if 32 <= b < 127 else "." for b in chunk])
                             print(f"    {j:04X}: {hex_str:<48}  {ascii_str}")
@@ -121,6 +123,7 @@ def analyze_sysex_file(filepath):
 
         except Exception as e2:
             print(f"Error: {e2}")
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

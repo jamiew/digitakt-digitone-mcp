@@ -3,15 +3,21 @@
 Verify MIDI CC mappings from nrpn_constants.py against the JSON specification
 """
 
-import sys
 import os
+import sys
+
 # Add parent directory to path to import nrpn_constants
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from nrpn_constants import (
-    TrackCC, SourceCC, FilterCC, AmpCC, FXCC,
-    TrackParams, TrigParams, SourceParams, FilterParams, AmpParams,
-    LFO1Params, LFO2Params, LFO3Params, DelayParams, ReverbParams, ChorusParams
+    FXCC,
+    AmpCC,
+    AmpParams,
+    FilterCC,
+    FilterParams,
+    SourceCC,
+    TrackCC,
+    TrigParams,
 )
 
 print("Digitakt II MIDI CC and NRPN Mapping Verification")
@@ -22,11 +28,13 @@ print("\n1. Checking for CC number conflicts...")
 cc_map = {}
 conflicts = []
 
+
 def add_cc(name, cc_number, category):
     if cc_number in cc_map:
         conflicts.append(f"  CC {cc_number}: {category}.{name} conflicts with {cc_map[cc_number]}")
     else:
         cc_map[cc_number] = f"{category}.{name}"
+
 
 # Track CCs
 add_cc("MUTE", TrackCC.MUTE, "TrackCC")
