@@ -6,15 +6,16 @@ This test verifies that the automation_loop_bars parameter correctly
 duplicates parameter automation events at the specified interval.
 """
 
+
 def test_automation_looping_logic():
     """Test the duplication logic for automation looping"""
 
     # Simulate initial automation events (4 bars = 16 beats = 384 pulses)
     event_schedule = [
-        ("param", 0, "filter_cutoff", 20, 0, 0),      # Beat 0
-        ("param", 96, "filter_cutoff", 80, 0, 0),     # Beat 4 (1 bar)
-        ("param", 192, "filter_cutoff", 40, 0, 0),    # Beat 8 (2 bars)
-        ("param", 288, "filter_cutoff", 100, 0, 0),   # Beat 12 (3 bars)
+        ("param", 0, "filter_cutoff", 20, 0, 0),  # Beat 0
+        ("param", 96, "filter_cutoff", 80, 0, 0),  # Beat 4 (1 bar)
+        ("param", 192, "filter_cutoff", 40, 0, 0),  # Beat 8 (2 bars)
+        ("param", 288, "filter_cutoff", 100, 0, 0),  # Beat 12 (3 bars)
     ]
 
     # Settings: 4-bar loop repeated over 16 bars
@@ -24,9 +25,9 @@ def test_automation_looping_logic():
 
     # Apply the duplication logic
     loop_beats = automation_loop_bars * 4  # 16 beats
-    loop_pulses = int(loop_beats * 24)      # 384 pulses
-    total_beats = bars * 4                  # 64 beats
-    total_pulses = int(total_beats * 24)    # 1536 pulses
+    loop_pulses = int(loop_beats * 24)  # 384 pulses
+    total_beats = bars * 4  # 64 beats
+    total_pulses = int(total_beats * 24)  # 1536 pulses
 
     # Get param events that occur within the loop period
     original_param_events = [e for e in event_schedule if e[0] == "param" and e[1] < loop_pulses]
@@ -49,18 +50,19 @@ def test_automation_looping_logic():
             if new_pulse < total_pulses:
                 event_schedule.append((event_type, new_pulse, param_name, value, track_num, 0))
                 total_param_events += 1
-                print(f"  Added: {param_name}={value} at pulse {new_pulse} (beat {new_pulse/24})")
+                print(f"  Added: {param_name}={value} at pulse {new_pulse} (beat {new_pulse / 24})")
 
     # Sort all events by pulse index
     event_schedule.sort(key=lambda x: x[1])
 
-    print(f"\n=== Final Results ===")
+    print("\n=== Final Results ===")
     print(f"Total param events: {total_param_events}")
     print(f"Expected: {len(original_param_events) * num_loops}")
 
     # Verify we have the right number of events
-    assert total_param_events == len(original_param_events) * num_loops, \
+    assert total_param_events == len(original_param_events) * num_loops, (
         f"Expected {len(original_param_events) * num_loops} events, got {total_param_events}"
+    )
 
     # Verify events are at correct positions
     print("\nAll events:")
@@ -68,7 +70,7 @@ def test_automation_looping_logic():
         _, pulse, param_name, value, _, _ = event
         beat = pulse / 24
         bar = beat / 4
-        print(f"  {i+1}. {param_name}={value} at pulse {pulse} (beat {beat}, bar {bar})")
+        print(f"  {i + 1}. {param_name}={value} at pulse {pulse} (beat {beat}, bar {bar})")
 
     # Check that each loop has the same pattern
     events_per_loop = len(original_param_events)
@@ -81,11 +83,11 @@ def test_automation_looping_logic():
         for i, event in enumerate(loop_events):
             _, pulse, param_name, value, _, _ = event
             expected_pulse = original_param_events[i][1] + (loop_idx * loop_pulses)
-            assert pulse == expected_pulse, \
-                f"Loop {loop_idx}, event {i}: expected pulse {expected_pulse}, got {pulse}"
+            assert pulse == expected_pulse, f"Loop {loop_idx}, event {i}: expected pulse {expected_pulse}, got {pulse}"
             print(f"  ✓ Event {i} at correct position (pulse {pulse})")
 
     print("\n✅ All tests passed!")
+
 
 if __name__ == "__main__":
     test_automation_looping_logic()

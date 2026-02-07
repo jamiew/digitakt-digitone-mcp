@@ -13,25 +13,23 @@ Key differences from Digitakt II:
 """
 
 import asyncio
-import mido
-import time
-from typing import Optional
-from mcp.server import Server
-from mcp.types import Tool, TextContent, Resource
-import mcp.server.stdio
-import logging
 import json
-import os
+import logging
 from pathlib import Path
+
+import mcp.server.stdio
+import mido
+from mcp.server import Server
+from mcp.types import Resource, TextContent, Tool
+
 from nrpn_constants import (
-    NRPN_MSB, TrackParams, TrigParams, SourceParams,
-    FilterParams, AmpParams, LFO1Params,
-    DelayParams, ReverbParams,
-    get_param_name
+    get_param_name,
 )
 from parameter_map import (
-    PARAMETER_MAP, validate_parameter, get_parameter_info,
-    get_all_parameters, get_parameters_by_category
+    get_all_parameters,
+    get_parameter_info,
+    get_parameters_by_category,
+    validate_parameter,
 )
 
 # Configure logging
@@ -58,19 +56,20 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 server = Server("digitakt-midi-server")
 
 # Global MIDI port references
-output_port: Optional[mido.ports.BaseOutput] = None
-input_port: Optional[mido.ports.BaseInput] = None
+output_port: mido.ports.BaseOutput | None = None
+input_port: mido.ports.BaseInput | None = None
 
 # Global history for last played melody/pattern
 last_melody = None  # Stores: {"bpm": int, "notes": [...], "channel": int}
 last_tracks = None  # Stores: {"bpm": int, "triggers": [...]}
-last_loop = None    # Stores: {"bpm": int, "loop_notes": [...], "loop_length": float, "channel": int}
+last_loop = None  # Stores: {"bpm": int, "loop_notes": [...], "loop_length": float, "channel": int}
 last_multi_channel_pattern = None  # Stores: {"bpm": int, "bars": int, "track_triggers": [...], "midi_channels": {...}}
+
 
 def connect_midi():
     """Connect to Digitakt MIDI ports"""
     global output_port, input_port
-    
+
     try:
         # Find and connect to Digitakt output port
         output_ports = mido.get_output_names()
@@ -101,9 +100,10 @@ def connect_midi():
 # MIDI LOGGING HELPERS
 # ============================================================================
 
+
 def note_name(note: int) -> str:
     """Convert MIDI note number to name (e.g., 60 -> C4)"""
-    names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     octave = (note // 12) - 1
     return f"{names[note % 12]}{octave}"
 
@@ -111,33 +111,33 @@ def note_name(note: int) -> str:
 def log_note_on(note: int, velocity: int, channel: int):
     """Log a note on message"""
     if note < 8:
-        logger.info(f"🥁 NOTE ON  Track {note+1} vel={velocity} ch={channel+1}")
+        logger.info(f"🥁 NOTE ON  Track {note + 1} vel={velocity} ch={channel + 1}")
     else:
-        logger.info(f"🎹 NOTE ON  {note_name(note)} ({note}) vel={velocity} ch={channel+1}")
+        logger.info(f"🎹 NOTE ON  {note_name(note)} ({note}) vel={velocity} ch={channel + 1}")
 
 
 def log_note_off(note: int, channel: int):
     """Log a note off message"""
     if note < 8:
-        logger.debug(f"   NOTE OFF Track {note+1} ch={channel+1}")
+        logger.debug(f"   NOTE OFF Track {note + 1} ch={channel + 1}")
     else:
-        logger.debug(f"   NOTE OFF {note_name(note)} ({note}) ch={channel+1}")
+        logger.debug(f"   NOTE OFF {note_name(note)} ({note}) ch={channel + 1}")
 
 
 def log_cc(cc: int, value: int, channel: int, param_name: str = None):
     """Log a CC message"""
     if param_name:
-        logger.info(f"🎛️  CC {cc:3d} = {value:3d}  ch={channel+1}  ({param_name})")
+        logger.info(f"🎛️  CC {cc:3d} = {value:3d}  ch={channel + 1}  ({param_name})")
     else:
-        logger.info(f"🎛️  CC {cc:3d} = {value:3d}  ch={channel+1}")
+        logger.info(f"🎛️  CC {cc:3d} = {value:3d}  ch={channel + 1}")
 
 
 def log_nrpn(msb: int, lsb: int, value: int, channel: int, param_name: str = None):
     """Log an NRPN message"""
     if param_name:
-        logger.info(f"🎚️  NRPN {msb}:{lsb} = {value:3d}  ch={channel+1}  ({param_name})")
+        logger.info(f"🎚️  NRPN {msb}:{lsb} = {value:3d}  ch={channel + 1}  ({param_name})")
     else:
-        logger.info(f"🎚️  NRPN {msb}:{lsb} = {value:3d}  ch={channel+1}")
+        logger.info(f"🎚️  NRPN {msb}:{lsb} = {value:3d}  ch={channel + 1}")
 
 
 def log_transport(msg_type: str):
@@ -147,7 +147,7 @@ def log_transport(msg_type: str):
 
 def log_program_change(program: int, channel: int):
     """Log a program change"""
-    logger.info(f"📀 PROGRAM CHANGE: {program}  ch={channel+1}")
+    logger.info(f"📀 PROGRAM CHANGE: {program}  ch={channel + 1}")
 
 
 def send_parameter_change(param_name: str, value: int, channel: int = 0):
@@ -161,16 +161,17 @@ def send_parameter_change(param_name: str, value: int, channel: int = 0):
 
     if param_info["type"] == "cc":
         # Send CC message
-        msg = mido.Message('control_change', control=param_info["cc"], value=value, channel=channel)
+        msg = mido.Message("control_change", control=param_info["cc"], value=value, channel=channel)
         output_port.send(msg)
         log_cc(param_info["cc"], value, channel, param_name)
     elif param_info["type"] == "nrpn":
         # Send NRPN message (4 CC messages)
-        output_port.send(mido.Message('control_change', control=99, value=param_info["msb"], channel=channel))
-        output_port.send(mido.Message('control_change', control=98, value=param_info["lsb"], channel=channel))
-        output_port.send(mido.Message('control_change', control=6, value=value, channel=channel))
-        output_port.send(mido.Message('control_change', control=38, value=0, channel=channel))
+        output_port.send(mido.Message("control_change", control=99, value=param_info["msb"], channel=channel))
+        output_port.send(mido.Message("control_change", control=98, value=param_info["lsb"], channel=channel))
+        output_port.send(mido.Message("control_change", control=6, value=value, channel=channel))
+        output_port.send(mido.Message("control_change", control=38, value=0, channel=channel))
         log_nrpn(param_info["msb"], param_info["lsb"], value, channel, param_name)
+
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
@@ -186,31 +187,31 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "MIDI note number (0-127). Track triggers: 0-7 (Track 1-8). Chromatic: 12-84 (plays active track). Examples: 0=Track 1 kick, 1=Track 2 snare, 60=C3 on active track.",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "velocity": {
                         "type": "integer",
                         "description": "Note velocity (1-127). 0 = note off. Default is 100.",
                         "minimum": 0,
                         "maximum": 127,
-                        "default": 100
+                        "default": 100,
                     },
                     "duration": {
                         "type": "number",
                         "description": "How long to hold the note in seconds. Default is 0.1 seconds.",
                         "minimum": 0.001,
-                        "default": 0.1
+                        "default": 0.1,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1 (auto channel on Digitakt).",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["note"]
-            }
+                "required": ["note"],
+            },
         ),
         Tool(
             name="trigger_track",
@@ -222,31 +223,31 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Track number (1-8). Tracks 1-8 correspond to MIDI notes 0-7.",
                         "minimum": 1,
-                        "maximum": 8
+                        "maximum": 8,
                     },
                     "velocity": {
                         "type": "integer",
                         "description": "Note velocity (1-127). Default is 100.",
                         "minimum": 1,
                         "maximum": 127,
-                        "default": 100
+                        "default": 100,
                     },
                     "duration": {
                         "type": "number",
                         "description": "How long to hold the note in seconds. Default is 0.1 seconds.",
                         "minimum": 0.001,
-                        "default": 0.1
+                        "default": 0.1,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1 (AUTO CHANNEL).",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["track"]
-            }
+                "required": ["track"],
+            },
         ),
         Tool(
             name="send_cc",
@@ -258,24 +259,19 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "CC number (0-127). Common CCs: 74=Filter Freq, 71=Filter Res, 73=Attack, 75=Decay, etc.",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
-                    "value": {
-                        "type": "integer",
-                        "description": "CC value (0-127)",
-                        "minimum": 0,
-                        "maximum": 127
-                    },
+                    "value": {"type": "integer", "description": "CC value (0-127)", "minimum": 0, "maximum": 127},
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["cc_number", "value"]
-            }
+                "required": ["cc_number", "value"],
+            },
         ),
         Tool(
             name="send_program_change",
@@ -287,18 +283,18 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Program number (0-127). Patterns are numbered 0-127 across banks.",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["program"]
-            }
+                "required": ["program"],
+            },
         ),
         Tool(
             name="send_note_sequence",
@@ -309,29 +305,24 @@ async def list_tools() -> list[Tool]:
                     "notes": {
                         "type": "array",
                         "description": "Array of note events. Each event is [note, velocity, duration_sec]",
-                        "items": {
-                            "type": "array",
-                            "minItems": 3,
-                            "maxItems": 3,
-                            "items": {"type": "number"}
-                        }
+                        "items": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
                     },
                     "delay": {
                         "type": "number",
                         "description": "Delay between notes in seconds. Default is 0.25 (quarter note at 120 BPM)",
                         "minimum": 0,
-                        "default": 0.25
+                        "default": 0.25,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["notes"]
-            }
+                "required": ["notes"],
+            },
         ),
         Tool(
             name="send_sysex",
@@ -342,18 +333,14 @@ async def list_tools() -> list[Tool]:
                     "data": {
                         "type": "array",
                         "description": "Array of bytes to send as SysEx data (excluding F0 start and F7 end bytes, which are added automatically). Example: [0x00, 0x20, 0x3C, ...]. For Elektron devices, messages typically start with manufacturer ID [0x00, 0x20, 0x3C].",
-                        "items": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 127
-                        }
+                        "items": {"type": "integer", "minimum": 0, "maximum": 127},
                     },
                     "hex_string": {
                         "type": "string",
-                        "description": "Alternative to 'data': provide SysEx data as a hex string (e.g., '00203C...'). Spaces are ignored."
-                    }
-                }
-            }
+                        "description": "Alternative to 'data': provide SysEx data as a hex string (e.g., '00203C...'). Spaces are ignored.",
+                    },
+                },
+            },
         ),
         Tool(
             name="request_sysex_dump",
@@ -364,23 +351,23 @@ async def list_tools() -> list[Tool]:
                     "dump_type": {
                         "type": "string",
                         "description": "Type of data to request: 'pattern', 'sound', 'kit', or 'project'",
-                        "enum": ["pattern", "sound", "kit", "project"]
+                        "enum": ["pattern", "sound", "kit", "project"],
                     },
                     "bank": {
                         "type": "integer",
                         "description": "Bank number (0-15 for patterns). Optional.",
                         "minimum": 0,
-                        "maximum": 15
+                        "maximum": 15,
                     },
                     "pattern_number": {
                         "type": "integer",
                         "description": "Pattern number within bank (0-15). Optional.",
                         "minimum": 0,
-                        "maximum": 15
-                    }
+                        "maximum": 15,
+                    },
                 },
-                "required": ["dump_type"]
-            }
+                "required": ["dump_type"],
+            },
         ),
         Tool(
             name="send_nrpn",
@@ -392,30 +379,30 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "NRPN MSB (Most Significant Byte). 1=Track/Trig/Source/Filter/Amp, 2=FX, 3=Trig Note/Velocity/Length",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "lsb": {
                         "type": "integer",
                         "description": "NRPN LSB (Least Significant Byte) - the specific parameter number",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "value": {
                         "type": "integer",
                         "description": "Parameter value (0-127)",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["msb", "lsb", "value"]
-            }
+                "required": ["msb", "lsb", "value"],
+            },
         ),
         Tool(
             name="set_trig_note",
@@ -427,18 +414,18 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "MIDI note number (0-127). For Digitakt: 60=C3",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["note"]
-            }
+                "required": ["note"],
+            },
         ),
         Tool(
             name="set_trig_velocity",
@@ -446,22 +433,17 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "velocity": {
-                        "type": "integer",
-                        "description": "Velocity (0-127)",
-                        "minimum": 0,
-                        "maximum": 127
-                    },
+                    "velocity": {"type": "integer", "description": "Velocity (0-127)", "minimum": 0, "maximum": 127},
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["velocity"]
-            }
+                "required": ["velocity"],
+            },
         ),
         Tool(
             name="set_trig_length",
@@ -469,22 +451,17 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "length": {
-                        "type": "integer",
-                        "description": "Note length (0-127)",
-                        "minimum": 0,
-                        "maximum": 127
-                    },
+                    "length": {"type": "integer", "description": "Note length (0-127)", "minimum": 0, "maximum": 127},
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["length"]
-            }
+                "required": ["length"],
+            },
         ),
         Tool(
             name="reset_velocities",
@@ -497,35 +474,26 @@ async def list_tools() -> list[Tool]:
                         "description": "Velocity value to set on all tracks (0-127). Default is 120.",
                         "minimum": 0,
                         "maximum": 127,
-                        "default": 120
+                        "default": 120,
                     }
                 },
-                "required": []
-            }
+                "required": [],
+            },
         ),
         Tool(
             name="send_midi_start",
             description="Send MIDI Start message to start the Digitakt's sequencer from the beginning. This is a standard MIDI transport control message.",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="send_midi_stop",
             description="Send MIDI Stop message to stop the Digitakt's sequencer. This is a standard MIDI transport control message.",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="send_midi_continue",
             description="Send MIDI Continue message to resume the Digitakt's sequencer from its current position. This is a standard MIDI transport control message.",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="send_song_position",
@@ -537,11 +505,11 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Song position in MIDI beats (16th notes). 0 = start, 16 = 1 bar at 4/4 time.",
                         "minimum": 0,
-                        "maximum": 16383
+                        "maximum": 16383,
                     }
                 },
-                "required": ["position"]
-            }
+                "required": ["position"],
+            },
         ),
         Tool(
             name="play_with_clock",
@@ -553,22 +521,22 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Number of bars to play (in 4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "send_stop": {
                         "type": "boolean",
                         "description": "Send MIDI Stop after duration. Default is true.",
-                        "default": True
-                    }
-                }
-            }
+                        "default": True,
+                    },
+                },
+            },
         ),
         Tool(
             name="play_pattern_with_tracks",
@@ -580,32 +548,28 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Number of bars to play (in 4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "triggers": {
                         "type": "array",
                         "description": "Array of [beat, track, velocity] where beat is 0-based quarter note (0=start, 1=beat 2, etc), track is 1-8, velocity is 1-127.",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 3
-                        }
+                        "items": {"type": "array", "minItems": 2, "maxItems": 3},
                     },
                     "send_stop": {
                         "type": "boolean",
                         "description": "Send MIDI Stop after duration. Default is true.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
                 },
-                "required": ["triggers"]
-            }
+                "required": ["triggers"],
+            },
         ),
         Tool(
             name="play_pattern_with_melody",
@@ -617,39 +581,35 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Number of bars to play (in 4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "notes": {
                         "type": "array",
                         "description": "Array of [beat, note, velocity, duration] where beat is 0-based quarter note, note is MIDI note 12-127, velocity is 1-127, duration is in seconds.",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 4
-                        }
+                        "items": {"type": "array", "minItems": 2, "maxItems": 4},
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1 (auto channel).",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
+                        "default": 1,
                     },
                     "send_stop": {
                         "type": "boolean",
                         "description": "Send MIDI Stop after duration. Default is true.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
                 },
-                "required": ["notes"]
-            }
+                "required": ["notes"],
+            },
         ),
         Tool(
             name="play_pattern_with_loop",
@@ -661,45 +621,41 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Number of bars to play (in 4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "loop_notes": {
                         "type": "array",
                         "description": "Array of [beat_offset, note_or_track, velocity] where beat_offset is relative to loop start (0-3.99 for 1 bar loop), note/track can be 0-15 for tracks or 12+ for melody, velocity is 1-127.",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 3
-                        }
+                        "items": {"type": "array", "minItems": 2, "maxItems": 3},
                     },
                     "loop_length": {
                         "type": "number",
                         "description": "Length of the loop in bars (in 4/4 time). Default is 1 bar.",
                         "minimum": 0.25,
-                        "default": 1
+                        "default": 1,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1 (auto channel).",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
+                        "default": 1,
                     },
                     "send_stop": {
                         "type": "boolean",
                         "description": "Send MIDI Stop after duration. Default is true.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
                 },
-                "required": ["loop_notes"]
-            }
+                "required": ["loop_notes"],
+            },
         ),
         Tool(
             name="play_pattern_with_tracks_and_melody",
@@ -711,61 +667,53 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Number of bars to play (in 4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "track_triggers": {
                         "type": "array",
                         "description": "Array of [beat, track, velocity] or [beat, track, velocity, note] where beat is 0-based quarter note, track is 1-8, velocity is 1-127, and optional note is MIDI note 0-127 for chromatic triggering (if omitted, uses track number as note for standard triggering).",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 4
-                        },
-                        "default": []
+                        "items": {"type": "array", "minItems": 2, "maxItems": 4},
+                        "default": [],
                     },
                     "melody_notes": {
                         "type": "array",
                         "description": "Array of [beat, note, velocity, duration] where beat is 0-based quarter note, note is MIDI note 12-127, velocity is 1-127, duration is in seconds.",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 4
-                        },
-                        "default": []
+                        "items": {"type": "array", "minItems": 2, "maxItems": 4},
+                        "default": [],
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel for melody notes (1-16). Track triggers always use channel 1. Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
+                        "default": 1,
                     },
                     "midi_start_at_beat": {
                         "type": "number",
                         "description": "Beat number (0-based) to send MIDI Start and begin MIDI Clock. Before this beat, only note triggers are sent (no transport control). When starting mid-sequence (beat > 0), a MIDI Song Position Pointer message is sent before MIDI Start to ensure the Digitakt sequencer aligns with the correct beat position. Default is 0 (send MIDI Start immediately). Use this for count-in workflows where you want to arm recording during count-in, then start Digitakt sequencer at a specific beat.",
                         "minimum": 0,
-                        "default": 0
+                        "default": 0,
                     },
                     "preroll_bars": {
                         "type": "number",
                         "description": "Number of bars to delay melody notes (not track triggers). Track triggers play immediately, melody notes start after preroll. Use for live recording: set preroll_bars to the loop length, arm recording during preroll, then melody notes get recorded. Default is 0 (no preroll).",
                         "minimum": 0,
-                        "default": 0
+                        "default": 0,
                     },
                     "send_stop": {
                         "type": "boolean",
                         "description": "Send MIDI Stop after duration. Default is true.",
-                        "default": True
-                    }
-                }
-            }
+                        "default": True,
+                    },
+                },
+            },
         ),
         Tool(
             name="play_pattern_with_multi_channel_midi",
@@ -777,59 +725,51 @@ async def list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Number of bars to play (in 4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "track_triggers": {
                         "type": "array",
                         "description": "Array of [beat, track, velocity] or [beat, track, velocity, note] for Digitakt drum tracks where beat is 0-based quarter note, track is 1-8, velocity is 1-127, and optional note is MIDI note 0-127 for chromatic triggering (if omitted, uses track number as note for standard triggering).",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 4
-                        },
-                        "default": []
+                        "items": {"type": "array", "minItems": 2, "maxItems": 4},
+                        "default": [],
                     },
                     "midi_channels": {
                         "type": "object",
                         "description": "Dictionary mapping MIDI channel numbers (1-16) to arrays of [beat, note, velocity, duration]. Each channel can have independent note sequences. Example: {'9': [[0, 54, 75, 3.9], [0.01, 57, 75, 3.9]], '12': [[0, 69, 70, 1.9], [2, 73, 65, 1.9]]}",
                         "additionalProperties": {
                             "type": "array",
-                            "items": {
-                                "type": "array",
-                                "minItems": 2,
-                                "maxItems": 4
-                            }
+                            "items": {"type": "array", "minItems": 2, "maxItems": 4},
                         },
-                        "default": {}
+                        "default": {},
                     },
                     "send_clock": {
                         "type": "boolean",
                         "description": "Send MIDI Clock messages for transport sync. Default is true.",
-                        "default": True
+                        "default": True,
                     },
                     "midi_start_at_beat": {
                         "type": "number",
                         "description": "Beat number (0-based) to send MIDI Start and begin MIDI Clock. Before this beat, only note triggers are sent (no transport control). When starting mid-sequence (beat > 0), a MIDI Song Position Pointer message is sent before MIDI Start to ensure the Digitakt sequencer aligns with the correct beat position. Default is 0 (send MIDI Start immediately).",
                         "minimum": 0,
-                        "default": 0
+                        "default": 0,
                     },
                     "preroll_bars": {
                         "type": "number",
                         "description": "Number of bars to delay MIDI channel notes (not track triggers). Track triggers play immediately, MIDI notes start after preroll. Use for live recording: set preroll_bars to the loop length, arm recording during preroll, then MIDI notes get recorded. Default is 0 (no preroll).",
                         "minimum": 0,
-                        "default": 0
+                        "default": 0,
                     },
                     "send_stop": {
                         "type": "boolean",
                         "description": "Send MIDI Stop after duration. Default is true.",
-                        "default": True
+                        "default": True,
                     },
                     "parameter_automation": {
                         "type": "object",
@@ -864,7 +804,7 @@ Example - 4-bar filter sweep on track 11, LFO sweep on track 13:
 }
 
 Combine with automation_loop_bars to repeat patterns. Use list_parameters to see all available parameters.""",
-                        "default": {}
+                        "default": {},
                     },
                     "automation_loop_bars": {
                         "type": "number",
@@ -891,10 +831,10 @@ This creates smooth filter and LFO sweeps that repeat every 4 bars for the full 
 
 Default is 0 (no looping - automation plays once).""",
                         "minimum": 0,
-                        "default": 0
-                    }
-                }
-            }
+                        "default": 0,
+                    },
+                },
+            },
         ),
         Tool(
             name="save_last_melody",
@@ -904,11 +844,11 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "filename": {
                         "type": "string",
-                        "description": "Filename for the MIDI file (e.g., 'my_melody.mid'). Will be saved in the current directory."
+                        "description": "Filename for the MIDI file (e.g., 'my_melody.mid'). Will be saved in the current directory.",
                     }
                 },
-                "required": ["filename"]
-            }
+                "required": ["filename"],
+            },
         ),
         Tool(
             name="save_last_pattern",
@@ -918,11 +858,11 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "filename": {
                         "type": "string",
-                        "description": "Filename for the MIDI file (e.g., 'my_pattern.mid'). Will add .mid extension if not present."
+                        "description": "Filename for the MIDI file (e.g., 'my_pattern.mid'). Will add .mid extension if not present.",
                     }
                 },
-                "required": ["filename"]
-            }
+                "required": ["filename"],
+            },
         ),
         Tool(
             name="send_filter_sweep",
@@ -934,42 +874,42 @@ Default is 0 (no looping - automation plays once).""",
                         "type": "integer",
                         "description": "Starting filter cutoff value (0-127)",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "end_value": {
                         "type": "integer",
                         "description": "Ending filter cutoff value (0-127)",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "duration_sec": {
                         "type": "number",
                         "description": "Duration of the sweep in seconds",
-                        "minimum": 0.1
+                        "minimum": 0.1,
                     },
                     "curve": {
                         "type": "string",
                         "description": "Sweep curve shape: 'linear' (constant rate), 'exponential' (fast start, slow end), 'logarithmic' (slow start, fast end)",
                         "enum": ["linear", "exponential", "logarithmic"],
-                        "default": "linear"
+                        "default": "linear",
                     },
                     "steps": {
                         "type": "integer",
                         "description": "Number of CC messages to send (more = smoother). Default is 50.",
                         "minimum": 2,
                         "maximum": 200,
-                        "default": 50
+                        "default": 50,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["start_value", "end_value", "duration_sec"]
-            }
+                "required": ["start_value", "end_value", "duration_sec"],
+            },
         ),
         Tool(
             name="send_filter_envelope",
@@ -980,41 +920,41 @@ Default is 0 (no looping - automation plays once).""",
                     "attack_sec": {
                         "type": "number",
                         "description": "Attack time in seconds - time to reach peak (127)",
-                        "minimum": 0.01
+                        "minimum": 0.01,
                     },
                     "decay_sec": {
                         "type": "number",
                         "description": "Decay time in seconds - time to drop from peak to sustain level",
-                        "minimum": 0.01
+                        "minimum": 0.01,
                     },
                     "sustain_level": {
                         "type": "integer",
                         "description": "Sustain filter cutoff value (0-127)",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "release_sec": {
                         "type": "number",
                         "description": "Release time in seconds - time to return to 0",
-                        "minimum": 0.01
+                        "minimum": 0.01,
                     },
                     "steps_per_stage": {
                         "type": "integer",
                         "description": "Number of CC messages per stage (more = smoother). Default is 20.",
                         "minimum": 2,
                         "maximum": 100,
-                        "default": 20
+                        "default": 20,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["attack_sec", "decay_sec", "sustain_level", "release_sec"]
-            }
+                "required": ["attack_sec", "decay_sec", "sustain_level", "release_sec"],
+            },
         ),
         Tool(
             name="play_with_filter_automation",
@@ -1026,54 +966,46 @@ Default is 0 (no looping - automation plays once).""",
                         "type": "number",
                         "description": "Number of bars to play (in 4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "track_triggers": {
                         "type": "array",
                         "description": "Optional array of [beat, track, velocity] where beat is 0-based quarter note, track is 1-8, velocity is 1-127.",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 3
-                        },
-                        "default": []
+                        "items": {"type": "array", "minItems": 2, "maxItems": 3},
+                        "default": [],
                     },
                     "filter_events": {
                         "type": "array",
                         "description": "Array of [beat, cutoff_value] for timed filter cutoff changes. Beat is 0-based quarter note, cutoff is 0-127.",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 2
-                        }
+                        "items": {"type": "array", "minItems": 2, "maxItems": 2},
                     },
                     "send_clock": {
                         "type": "boolean",
                         "description": "Send MIDI Start and Clock messages. Default is true.",
-                        "default": True
+                        "default": True,
                     },
                     "send_stop": {
                         "type": "boolean",
                         "description": "Send MIDI Stop after duration. Default is true.",
-                        "default": True
+                        "default": True,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["filter_events"]
-            }
+                "required": ["filter_events"],
+            },
         ),
         Tool(
             name="set_parameter",
@@ -1083,24 +1015,24 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "parameter": {
                         "type": "string",
-                        "description": "Parameter name to set. Examples: 'filter_cutoff', 'lfo1_depth', 'amp_volume', 'lfo1_destination'. Use list_parameters tool to see all available parameters."
+                        "description": "Parameter name to set. Examples: 'filter_cutoff', 'lfo1_depth', 'amp_volume', 'lfo1_destination'. Use list_parameters tool to see all available parameters.",
                     },
                     "value": {
                         "type": "integer",
                         "description": "Parameter value (0-127)",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). IMPORTANT: On Digitakt, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["parameter", "value"]
-            }
+                "required": ["parameter", "value"],
+            },
         ),
         Tool(
             name="send_parameter_sweep",
@@ -1110,48 +1042,48 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "parameter": {
                         "type": "string",
-                        "description": "Parameter name to sweep. Examples: 'filter_cutoff', 'filter_resonance', 'amp_attack', 'lfo1_depth', 'sample_start', 'pitch'. Use list_parameters tool to see all available parameters."
+                        "description": "Parameter name to sweep. Examples: 'filter_cutoff', 'filter_resonance', 'amp_attack', 'lfo1_depth', 'sample_start', 'pitch'. Use list_parameters tool to see all available parameters.",
                     },
                     "start_value": {
                         "type": "integer",
                         "description": "Starting parameter value (0-127)",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "end_value": {
                         "type": "integer",
                         "description": "Ending parameter value (0-127)",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "duration_sec": {
                         "type": "number",
                         "description": "Duration of the sweep in seconds",
-                        "minimum": 0.1
+                        "minimum": 0.1,
                     },
                     "curve": {
                         "type": "string",
                         "description": "Sweep curve shape: 'linear' (constant rate), 'exponential' (fast start, slow end), 'logarithmic' (slow start, fast end)",
                         "enum": ["linear", "exponential", "logarithmic"],
-                        "default": "linear"
+                        "default": "linear",
                     },
                     "steps": {
                         "type": "integer",
                         "description": "Number of messages to send (more = smoother). Default is 50.",
                         "minimum": 2,
                         "maximum": 200,
-                        "default": 50
+                        "default": 50,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). IMPORTANT: On Digitakt, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["parameter", "start_value", "end_value", "duration_sec"]
-            }
+                "required": ["parameter", "start_value", "end_value", "duration_sec"],
+            },
         ),
         Tool(
             name="send_parameter_envelope",
@@ -1161,46 +1093,46 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "parameter": {
                         "type": "string",
-                        "description": "Parameter name to modulate. Examples: 'filter_cutoff', 'amp_volume', 'lfo1_depth', 'sample_start'."
+                        "description": "Parameter name to modulate. Examples: 'filter_cutoff', 'amp_volume', 'lfo1_depth', 'sample_start'.",
                     },
                     "attack_sec": {
                         "type": "number",
                         "description": "Attack time in seconds - time to reach peak (127)",
-                        "minimum": 0.01
+                        "minimum": 0.01,
                     },
                     "decay_sec": {
                         "type": "number",
                         "description": "Decay time in seconds - time to drop from peak to sustain level",
-                        "minimum": 0.01
+                        "minimum": 0.01,
                     },
                     "sustain_level": {
                         "type": "integer",
                         "description": "Sustain parameter value (0-127)",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "release_sec": {
                         "type": "number",
                         "description": "Release time in seconds - time to return to 0",
-                        "minimum": 0.01
+                        "minimum": 0.01,
                     },
                     "steps_per_stage": {
                         "type": "integer",
                         "description": "Number of messages per stage (more = smoother). Default is 20.",
                         "minimum": 2,
                         "maximum": 100,
-                        "default": 20
+                        "default": 20,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). IMPORTANT: On Digitakt, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["parameter", "attack_sec", "decay_sec", "sustain_level", "release_sec"]
-            }
+                "required": ["parameter", "attack_sec", "decay_sec", "sustain_level", "release_sec"],
+            },
         ),
         Tool(
             name="play_pattern_with_parameter_automation",
@@ -1212,49 +1144,45 @@ Default is 0 (no looping - automation plays once).""",
                         "type": "number",
                         "description": "Number of bars to play (in 4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "track_triggers": {
                         "type": "array",
                         "description": "Optional array of [beat, track, velocity] where beat is 0-based quarter note, track is 1-8, velocity is 1-127.",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 3
-                        },
-                        "default": []
+                        "items": {"type": "array", "minItems": 2, "maxItems": 3},
+                        "default": [],
                     },
                     "parameter_automation": {
                         "type": "object",
-                        "description": "Object mapping parameter names to arrays of [beat, value] pairs. Example: {'filter_cutoff': [[0, 20], [4, 80]], 'filter_resonance': [[0, 40], [8, 100]], 'lfo1_depth': [[0, 0], [8, 127]]}"
+                        "description": "Object mapping parameter names to arrays of [beat, value] pairs. Example: {'filter_cutoff': [[0, 20], [4, 80]], 'filter_resonance': [[0, 40], [8, 100]], 'lfo1_depth': [[0, 0], [8, 127]]}",
                     },
                     "send_clock": {
                         "type": "boolean",
                         "description": "Send MIDI Start and Clock messages. Default is true.",
-                        "default": True
+                        "default": True,
                     },
                     "send_stop": {
                         "type": "boolean",
                         "description": "Send MIDI Stop after duration. Default is true.",
-                        "default": True
+                        "default": True,
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). IMPORTANT: On Digitakt, each track has its own MIDI channel. Set this to match the track number you want to control (Track 1 = channel 1, Track 12 = channel 12, etc). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["parameter_automation"]
-            }
+                "required": ["parameter_automation"],
+            },
         ),
         Tool(
             name="save_automation_preset",
@@ -1264,19 +1192,16 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "preset_name": {
                         "type": "string",
-                        "description": "Name for the preset (without .json extension). Example: 'wobble_bass', 'filter_build'"
+                        "description": "Name for the preset (without .json extension). Example: 'wobble_bass', 'filter_build'",
                     },
                     "automation": {
                         "type": "object",
-                        "description": "Automation data including parameter_automation, bars, bpm, etc."
+                        "description": "Automation data including parameter_automation, bars, bpm, etc.",
                     },
-                    "description": {
-                        "type": "string",
-                        "description": "Optional description of what this preset does"
-                    }
+                    "description": {"type": "string", "description": "Optional description of what this preset does"},
                 },
-                "required": ["preset_name", "automation"]
-            }
+                "required": ["preset_name", "automation"],
+            },
         ),
         Tool(
             name="load_automation_preset",
@@ -1286,24 +1211,21 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "preset_name": {
                         "type": "string",
-                        "description": "Name of the preset to load (without .json extension)"
+                        "description": "Name of the preset to load (without .json extension)",
                     },
                     "play": {
                         "type": "boolean",
                         "description": "If true, immediately play the loaded preset. Default is false (just load and return the data).",
-                        "default": False
-                    }
+                        "default": False,
+                    },
                 },
-                "required": ["preset_name"]
-            }
+                "required": ["preset_name"],
+            },
         ),
         Tool(
             name="list_automation_presets",
             description=f"List all available automation presets stored in {PRESET_DIR}.",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="export_automation_to_midi",
@@ -1313,22 +1235,22 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "filename": {
                         "type": "string",
-                        "description": "Output MIDI filename (will add .mid extension if not present)"
+                        "description": "Output MIDI filename (will add .mid extension if not present)",
                     },
                     "automation": {
                         "type": "object",
-                        "description": "Automation data including parameter_automation, bars, bpm, etc."
+                        "description": "Automation data including parameter_automation, bars, bpm, etc.",
                     },
                     "channel": {
                         "type": "integer",
                         "description": "MIDI channel (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["filename", "automation"]
-            }
+                "required": ["filename", "automation"],
+            },
         ),
         Tool(
             name="export_pattern_to_midi",
@@ -1338,51 +1260,43 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "filename": {
                         "type": "string",
-                        "description": "Output filename (will add .mid extension if not present)"
+                        "description": "Output filename (will add .mid extension if not present)",
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute. Default is 120 BPM.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "bars": {
                         "type": "number",
                         "description": "Total length in bars (4/4 time). Default is 4 bars.",
                         "minimum": 0.25,
-                        "default": 4
+                        "default": 4,
                     },
                     "track_triggers": {
                         "type": "array",
                         "description": "Array of [beat, track, velocity] or [beat, track, velocity, note] for drum/sample triggers",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 4
-                        },
-                        "default": []
+                        "items": {"type": "array", "minItems": 2, "maxItems": 4},
+                        "default": [],
                     },
                     "melody_notes": {
                         "type": "array",
                         "description": "Array of [beat, note, velocity, duration] for melody notes",
-                        "items": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 4
-                        },
-                        "default": []
+                        "items": {"type": "array", "minItems": 2, "maxItems": 4},
+                        "default": [],
                     },
                     "melody_channel": {
                         "type": "integer",
                         "description": "MIDI channel for melody notes (1-16). Default is 1.",
                         "minimum": 1,
                         "maximum": 16,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["filename"]
-            }
+                "required": ["filename"],
+            },
         ),
         Tool(
             name="list_parameters",
@@ -1392,10 +1306,10 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "category": {
                         "type": "string",
-                        "description": "Optional: filter by category name. If not specified, shows all categories."
+                        "description": "Optional: filter by category name. If not specified, shows all categories.",
                     }
-                }
-            }
+                },
+            },
         ),
         # Pattern save/load tools
         Tool(
@@ -1406,45 +1320,42 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "pattern_name": {
                         "type": "string",
-                        "description": "Name for the pattern (without extension). Example: 'PP-C1', 'funk_beat_01'"
+                        "description": "Name for the pattern (without extension). Example: 'PP-C1', 'funk_beat_01'",
                     },
                     "bpm": {
                         "type": "number",
                         "description": "Tempo in beats per minute.",
                         "minimum": 20,
-                        "maximum": 300
+                        "maximum": 300,
                     },
                     "bars": {
                         "type": "number",
                         "description": "Number of bars in the pattern (4/4 time).",
-                        "minimum": 0.25
+                        "minimum": 0.25,
                     },
                     "track_triggers": {
                         "type": "array",
                         "description": "Array of [beat, track, velocity] or [beat, track, velocity, note] for drum/sample triggers.",
-                        "items": {"type": "array"}
+                        "items": {"type": "array"},
                     },
                     "midi_channels": {
                         "type": "object",
-                        "description": "Dict mapping MIDI channel numbers to arrays of [beat, note, velocity, duration]."
+                        "description": "Dict mapping MIDI channel numbers to arrays of [beat, note, velocity, duration].",
                     },
                     "parameter_automation": {
                         "type": "object",
                         "description": "Optional parameter automation data.",
-                        "default": {}
+                        "default": {},
                     },
                     "automation_loop_bars": {
                         "type": "number",
                         "description": "Optional: repeat automation every N bars.",
-                        "default": 0
+                        "default": 0,
                     },
-                    "description": {
-                        "type": "string",
-                        "description": "Optional description of the pattern."
-                    }
+                    "description": {"type": "string", "description": "Optional description of the pattern."},
                 },
-                "required": ["pattern_name", "bpm", "bars", "track_triggers", "midi_channels"]
-            }
+                "required": ["pattern_name", "bpm", "bars", "track_triggers", "midi_channels"],
+            },
         ),
         Tool(
             name="load_pattern",
@@ -1454,30 +1365,27 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "pattern_name": {
                         "type": "string",
-                        "description": "Name of the pattern to load (without .pattern.json extension)"
+                        "description": "Name of the pattern to load (without .pattern.json extension)",
                     },
                     "play": {
                         "type": "boolean",
                         "description": "If true, immediately play the pattern. Default is false.",
-                        "default": False
+                        "default": False,
                     },
                     "repeat": {
                         "type": "integer",
                         "description": "Number of times to repeat the pattern when playing. Default is 1.",
                         "minimum": 1,
-                        "default": 1
-                    }
+                        "default": 1,
+                    },
                 },
-                "required": ["pattern_name"]
-            }
+                "required": ["pattern_name"],
+            },
         ),
         Tool(
             name="list_patterns",
             description=f"List all saved patterns in {PATTERN_DIR}.",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="delete_pattern",
@@ -1487,11 +1395,11 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "pattern_name": {
                         "type": "string",
-                        "description": "Name of the pattern to delete (without .pattern.json extension)"
+                        "description": "Name of the pattern to delete (without .pattern.json extension)",
                     }
                 },
-                "required": ["pattern_name"]
-            }
+                "required": ["pattern_name"],
+            },
         ),
         Tool(
             name="update_pattern",
@@ -1499,45 +1407,24 @@ Default is 0 (no looping - automation plays once).""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pattern_name": {
-                        "type": "string",
-                        "description": "Name of the pattern to update"
-                    },
-                    "bpm": {
-                        "type": "number",
-                        "description": "New tempo (optional)",
-                        "minimum": 20,
-                        "maximum": 300
-                    },
-                    "bars": {
-                        "type": "number",
-                        "description": "New bar count (optional)",
-                        "minimum": 0.25
-                    },
+                    "pattern_name": {"type": "string", "description": "Name of the pattern to update"},
+                    "bpm": {"type": "number", "description": "New tempo (optional)", "minimum": 20, "maximum": 300},
+                    "bars": {"type": "number", "description": "New bar count (optional)", "minimum": 0.25},
                     "track_triggers": {
                         "type": "array",
                         "description": "New track triggers (optional - replaces all triggers)",
-                        "items": {"type": "array"}
+                        "items": {"type": "array"},
                     },
                     "midi_channels": {
                         "type": "object",
-                        "description": "New MIDI channel data (optional - replaces all channels)"
+                        "description": "New MIDI channel data (optional - replaces all channels)",
                     },
-                    "parameter_automation": {
-                        "type": "object",
-                        "description": "New parameter automation (optional)"
-                    },
-                    "automation_loop_bars": {
-                        "type": "number",
-                        "description": "New automation loop setting (optional)"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "New description (optional)"
-                    }
+                    "parameter_automation": {"type": "object", "description": "New parameter automation (optional)"},
+                    "automation_loop_bars": {"type": "number", "description": "New automation loop setting (optional)"},
+                    "description": {"type": "string", "description": "New description (optional)"},
                 },
-                "required": ["pattern_name"]
-            }
+                "required": ["pattern_name"],
+            },
         ),
         Tool(
             name="edit_pattern_chords",
@@ -1545,35 +1432,29 @@ Default is 0 (no looping - automation plays once).""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pattern_name": {
-                        "type": "string",
-                        "description": "Name of the pattern to edit"
-                    },
-                    "bar": {
-                        "type": "number",
-                        "description": "Bar position (0-based) where the chord starts"
-                    },
+                    "pattern_name": {"type": "string", "description": "Name of the pattern to edit"},
+                    "bar": {"type": "number", "description": "Bar position (0-based) where the chord starts"},
                     "chord_notes": {
                         "type": "array",
                         "description": "Array of MIDI note numbers for the chord (e.g., [48, 52, 55, 60] for C major)",
-                        "items": {"type": "integer", "minimum": 0, "maximum": 127}
+                        "items": {"type": "integer", "minimum": 0, "maximum": 127},
                     },
                     "channels": {
                         "type": "array",
                         "description": "MIDI channels to update. Default is [9, 10, 11, 12].",
                         "items": {"type": "integer", "minimum": 1, "maximum": 16},
-                        "default": [9, 10, 11, 12]
+                        "default": [9, 10, 11, 12],
                     },
                     "velocity": {
                         "type": "integer",
                         "description": "Velocity for all chord notes. Default is 75.",
                         "minimum": 1,
                         "maximum": 127,
-                        "default": 75
-                    }
+                        "default": 75,
+                    },
                 },
-                "required": ["pattern_name", "bar", "chord_notes"]
-            }
+                "required": ["pattern_name", "bar", "chord_notes"],
+            },
         ),
         Tool(
             name="edit_pattern_triggers",
@@ -1581,43 +1462,40 @@ Default is 0 (no looping - automation plays once).""",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pattern_name": {
-                        "type": "string",
-                        "description": "Name of the pattern to edit"
-                    },
+                    "pattern_name": {"type": "string", "description": "Name of the pattern to edit"},
                     "track": {
                         "type": "integer",
                         "description": "Track number (1-16) to modify",
                         "minimum": 1,
-                        "maximum": 16
+                        "maximum": 16,
                     },
                     "beats": {
                         "type": "array",
                         "description": "Array of beat positions to add/remove/replace",
-                        "items": {"type": "number"}
+                        "items": {"type": "number"},
                     },
                     "velocity": {
                         "type": "integer",
                         "description": "Velocity for added triggers. Default is 100.",
                         "minimum": 1,
                         "maximum": 127,
-                        "default": 100
+                        "default": 100,
                     },
                     "note": {
                         "type": "integer",
                         "description": "Optional MIDI note for chromatic mode (0-127). If omitted, uses standard track triggering.",
                         "minimum": 0,
-                        "maximum": 127
+                        "maximum": 127,
                     },
                     "mode": {
                         "type": "string",
                         "enum": ["add", "remove", "replace"],
                         "description": "'add' inserts new triggers, 'remove' deletes triggers at these beats, 'replace' clears track and adds new triggers. Default is 'add'.",
-                        "default": "add"
-                    }
+                        "default": "add",
+                    },
                 },
-                "required": ["pattern_name", "track", "beats"]
-            }
+                "required": ["pattern_name", "track", "beats"],
+            },
         ),
         Tool(
             name="monitor_midi_input",
@@ -1630,15 +1508,15 @@ Default is 0 (no looping - automation plays once).""",
                         "description": "How long to listen for MIDI input in seconds. Default is 5 seconds.",
                         "minimum": 0.5,
                         "maximum": 60,
-                        "default": 5
+                        "default": 5,
                     },
                     "filter_clock": {
                         "type": "boolean",
                         "description": "Filter out MIDI clock messages (they're very frequent). Default is true.",
-                        "default": True
-                    }
-                }
-            }
+                        "default": True,
+                    },
+                },
+            },
         ),
         Tool(
             name="record_midi_input",
@@ -1648,37 +1526,37 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "filename": {
                         "type": "string",
-                        "description": "Output filename (e.g., 'my_recording.mid'). Saved to ~/.mcp-config/digitakt/recordings/"
+                        "description": "Output filename (e.g., 'my_recording.mid'). Saved to ~/.mcp-config/digitakt/recordings/",
                     },
                     "duration_sec": {
                         "type": "number",
                         "description": "How long to record in seconds. Default is 30 seconds.",
                         "minimum": 1,
                         "maximum": 300,
-                        "default": 30
+                        "default": 30,
                     },
                     "bpm": {
                         "type": "number",
                         "description": "BPM for the MIDI file (for tempo track). Default is 120.",
                         "minimum": 20,
                         "maximum": 300,
-                        "default": 120
+                        "default": 120,
                     },
                     "filter_clock": {
                         "type": "boolean",
                         "description": "Filter out MIDI clock messages. Default is true.",
-                        "default": True
+                        "default": True,
                     },
                     "stop_on_silence": {
                         "type": "number",
                         "description": "Stop recording after this many seconds of no MIDI activity. 0 = disabled. Default is 0.",
                         "minimum": 0,
                         "maximum": 60,
-                        "default": 0
-                    }
+                        "default": 0,
+                    },
                 },
-                "required": ["filename"]
-            }
+                "required": ["filename"],
+            },
         ),
         Tool(
             name="play_midi_file",
@@ -1688,49 +1566,45 @@ Default is 0 (no looping - automation plays once).""",
                 "properties": {
                     "filename": {
                         "type": "string",
-                        "description": "MIDI file to play. Can be a full path or just filename (searches in ~/.mcp-config/digitakt/recordings/)"
+                        "description": "MIDI file to play. Can be a full path or just filename (searches in ~/.mcp-config/digitakt/recordings/)",
                     },
                     "tempo_scale": {
                         "type": "number",
                         "description": "Scale the tempo (1.0 = original, 0.5 = half speed, 2.0 = double speed). Default is 1.0.",
                         "minimum": 0.1,
                         "maximum": 4.0,
-                        "default": 1.0
+                        "default": 1.0,
                     },
                     "send_transport": {
                         "type": "boolean",
                         "description": "Send MIDI Start before and Stop after playback. Default is false.",
-                        "default": False
-                    }
+                        "default": False,
+                    },
                 },
-                "required": ["filename"]
-            }
+                "required": ["filename"],
+            },
         ),
         Tool(
             name="list_midi_recordings",
             description="List all MIDI recordings in the recordings directory.",
-            inputSchema={
-                "type": "object",
-                "properties": {}
-            }
-        )
+            inputSchema={"type": "object", "properties": {}},
+        ),
     ]
+
 
 # Helper function for delayed note off
 async def _delayed_note_off(note: int, duration: float, channel: int = 0):
     """Send note off after a delay"""
     await asyncio.sleep(duration)
     if output_port:
-        output_port.send(mido.Message('note_off', note=note, velocity=0, channel=channel))
+        output_port.send(mido.Message("note_off", note=note, velocity=0, channel=channel))
+
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Execute a MIDI tool"""
     if not output_port:
-        return [TextContent(
-            type="text",
-            text="Error: Not connected to Digitakt MIDI output port"
-        )]
+        return [TextContent(type="text", text="Error: Not connected to Digitakt MIDI output port")]
 
     try:
         if name == "send_note":
@@ -1740,7 +1614,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             channel = arguments.get("channel", 1) - 1  # Convert to 0-indexed
 
             # Send note on
-            msg_on = mido.Message('note_on', note=note, velocity=velocity, channel=channel)
+            msg_on = mido.Message("note_on", note=note, velocity=velocity, channel=channel)
             output_port.send(msg_on)
             log_note_on(note, velocity, channel)
 
@@ -1748,14 +1622,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             await asyncio.sleep(duration)
 
             # Send note off
-            msg_off = mido.Message('note_off', note=note, velocity=0, channel=channel)
+            msg_off = mido.Message("note_off", note=note, velocity=0, channel=channel)
             output_port.send(msg_off)
             log_note_off(note, channel)
 
-            return [TextContent(
-                type="text",
-                text=f"Sent note {note} (velocity {velocity}) on channel {channel+1} for {duration}s"
-            )]
+            return [
+                TextContent(
+                    type="text", text=f"Sent note {note} (velocity {velocity}) on channel {channel + 1} for {duration}s"
+                )
+            ]
 
         elif name == "trigger_track":
             track = arguments["track"]
@@ -1767,7 +1642,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             note = track - 1
 
             # Send note on
-            msg_on = mido.Message('note_on', note=note, velocity=velocity, channel=channel)
+            msg_on = mido.Message("note_on", note=note, velocity=velocity, channel=channel)
             output_port.send(msg_on)
             log_note_on(note, velocity, channel)
 
@@ -1775,41 +1650,37 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             await asyncio.sleep(duration)
 
             # Send note off
-            msg_off = mido.Message('note_off', note=note, velocity=0, channel=channel)
+            msg_off = mido.Message("note_off", note=note, velocity=0, channel=channel)
             output_port.send(msg_off)
             log_note_off(note, channel)
 
-            return [TextContent(
-                type="text",
-                text=f"Triggered Track {track} (note {note}, velocity {velocity}) on channel {channel+1} for {duration}s"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Triggered Track {track} (note {note}, velocity {velocity}) on channel {channel + 1} for {duration}s",
+                )
+            ]
 
         elif name == "send_cc":
             cc_number = arguments["cc_number"]
             value = arguments["value"]
             channel = arguments.get("channel", 1) - 1
 
-            msg = mido.Message('control_change', control=cc_number, value=value, channel=channel)
+            msg = mido.Message("control_change", control=cc_number, value=value, channel=channel)
             output_port.send(msg)
             log_cc(cc_number, value, channel)
 
-            return [TextContent(
-                type="text",
-                text=f"Sent CC {cc_number} = {value} on channel {channel+1}"
-            )]
+            return [TextContent(type="text", text=f"Sent CC {cc_number} = {value} on channel {channel + 1}")]
 
         elif name == "send_program_change":
             program = arguments["program"]
             channel = arguments.get("channel", 1) - 1
 
-            msg = mido.Message('program_change', program=program, channel=channel)
+            msg = mido.Message("program_change", program=program, channel=channel)
             output_port.send(msg)
             log_program_change(program, channel)
 
-            return [TextContent(
-                type="text",
-                text=f"Sent Program Change to {program} on channel {channel+1}"
-            )]
+            return [TextContent(type="text", text=f"Sent Program Change to {program} on channel {channel + 1}")]
 
         elif name == "send_note_sequence":
             notes = arguments["notes"]
@@ -1818,24 +1689,21 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             for i, (note, velocity, duration) in enumerate(notes):
                 # Send note on
-                msg_on = mido.Message('note_on', note=int(note), velocity=int(velocity), channel=channel)
+                msg_on = mido.Message("note_on", note=int(note), velocity=int(velocity), channel=channel)
                 output_port.send(msg_on)
 
                 # Wait for note duration
                 await asyncio.sleep(duration)
 
                 # Send note off
-                msg_off = mido.Message('note_off', note=int(note), velocity=0, channel=channel)
+                msg_off = mido.Message("note_off", note=int(note), velocity=0, channel=channel)
                 output_port.send(msg_off)
 
                 # Wait before next note (if not the last note)
                 if i < len(notes) - 1:
                     await asyncio.sleep(delay)
 
-            return [TextContent(
-                type="text",
-                text=f"Sent sequence of {len(notes)} notes on channel {channel+1}"
-            )]
+            return [TextContent(type="text", text=f"Sent sequence of {len(notes)} notes on channel {channel + 1}")]
 
         elif name == "send_sysex":
             # Get SysEx data from either data array or hex string
@@ -1846,16 +1714,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             elif "hex_string" in arguments and arguments["hex_string"]:
                 hex_str = arguments["hex_string"].replace(" ", "").replace("0x", "")
                 # Convert hex string to byte array
-                sysex_data = [int(hex_str[i:i+2], 16) for i in range(0, len(hex_str), 2)]
+                sysex_data = [int(hex_str[i : i + 2], 16) for i in range(0, len(hex_str), 2)]
 
             if not sysex_data:
-                return [TextContent(
-                    type="text",
-                    text="Error: Must provide either 'data' array or 'hex_string'"
-                )]
+                return [TextContent(type="text", text="Error: Must provide either 'data' array or 'hex_string'")]
 
             # Send SysEx message
-            msg = mido.Message('sysex', data=sysex_data)
+            msg = mido.Message("sysex", data=sysex_data)
             output_port.send(msg)
 
             # Format output
@@ -1863,10 +1728,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             if len(sysex_data) > 16:
                 hex_display += f"... ({len(sysex_data)} bytes total)"
 
-            return [TextContent(
-                type="text",
-                text=f"Sent SysEx message: F0 {hex_display} F7"
-            )]
+            return [TextContent(type="text", text=f"Sent SysEx message: F0 {hex_display} F7")]
 
         elif name == "request_sysex_dump":
             dump_type = arguments["dump_type"]
@@ -1897,15 +1759,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             elif dump_type == "project":
                 sysex_data.extend([0x6A, 0x00])  # Placeholder
 
-            msg = mido.Message('sysex', data=sysex_data)
+            msg = mido.Message("sysex", data=sysex_data)
             output_port.send(msg)
 
             hex_display = " ".join([f"{b:02X}" for b in sysex_data])
 
-            return [TextContent(
-                type="text",
-                text=f"Sent SysEx dump request for {dump_type}: F0 {hex_display} F7\n\nNote: The exact SysEx format for Digitakt dump requests is not publicly documented. This sends a basic request structure that may need adjustment. You may need to use Elektron Transfer software or capture actual dump requests to determine the correct format."
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Sent SysEx dump request for {dump_type}: F0 {hex_display} F7\n\nNote: The exact SysEx format for Digitakt dump requests is not publicly documented. This sends a basic request structure that may need adjustment. You may need to use Elektron Transfer software or capture actual dump requests to determine the correct format.",
+                )
+            ]
 
         elif name == "send_nrpn":
             msb = arguments["msb"]
@@ -1915,73 +1779,66 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send NRPN message (requires 4 CC messages)
             # 1. CC 99 (NRPN MSB)
-            msg1 = mido.Message('control_change', control=99, value=msb, channel=channel)
+            msg1 = mido.Message("control_change", control=99, value=msb, channel=channel)
             output_port.send(msg1)
 
             # 2. CC 98 (NRPN LSB)
-            msg2 = mido.Message('control_change', control=98, value=lsb, channel=channel)
+            msg2 = mido.Message("control_change", control=98, value=lsb, channel=channel)
             output_port.send(msg2)
 
             # 3. CC 6 (Data Entry MSB)
-            msg3 = mido.Message('control_change', control=6, value=value, channel=channel)
+            msg3 = mido.Message("control_change", control=6, value=value, channel=channel)
             output_port.send(msg3)
 
             # 4. CC 38 (Data Entry LSB) - typically 0
-            msg4 = mido.Message('control_change', control=38, value=0, channel=channel)
+            msg4 = mido.Message("control_change", control=38, value=0, channel=channel)
             output_port.send(msg4)
 
             param_name = get_param_name(msb, lsb)
             log_nrpn(msb, lsb, value, channel, param_name)
 
-            return [TextContent(
-                type="text",
-                text=f"Sent NRPN: {param_name} (MSB={msb}, LSB={lsb}) = {value} on channel {channel+1}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Sent NRPN: {param_name} (MSB={msb}, LSB={lsb}) = {value} on channel {channel + 1}",
+                )
+            ]
 
         elif name == "set_trig_note":
             note = arguments["note"]
             channel = arguments.get("channel", 1) - 1
 
             # NRPN MSB=3, LSB=0 for trig note
-            output_port.send(mido.Message('control_change', control=99, value=3, channel=channel))
-            output_port.send(mido.Message('control_change', control=98, value=0, channel=channel))
-            output_port.send(mido.Message('control_change', control=6, value=note, channel=channel))
-            output_port.send(mido.Message('control_change', control=38, value=0, channel=channel))
+            output_port.send(mido.Message("control_change", control=99, value=3, channel=channel))
+            output_port.send(mido.Message("control_change", control=98, value=0, channel=channel))
+            output_port.send(mido.Message("control_change", control=6, value=note, channel=channel))
+            output_port.send(mido.Message("control_change", control=38, value=0, channel=channel))
 
-            return [TextContent(
-                type="text",
-                text=f"Set trig note to {note} on channel {channel+1}"
-            )]
+            return [TextContent(type="text", text=f"Set trig note to {note} on channel {channel + 1}")]
 
         elif name == "set_trig_velocity":
             velocity = arguments["velocity"]
             channel = arguments.get("channel", 1) - 1
 
             # NRPN MSB=3, LSB=1 for trig velocity
-            output_port.send(mido.Message('control_change', control=99, value=3, channel=channel))
-            output_port.send(mido.Message('control_change', control=98, value=1, channel=channel))
-            output_port.send(mido.Message('control_change', control=6, value=velocity, channel=channel))
-            output_port.send(mido.Message('control_change', control=38, value=0, channel=channel))
+            output_port.send(mido.Message("control_change", control=99, value=3, channel=channel))
+            output_port.send(mido.Message("control_change", control=98, value=1, channel=channel))
+            output_port.send(mido.Message("control_change", control=6, value=velocity, channel=channel))
+            output_port.send(mido.Message("control_change", control=38, value=0, channel=channel))
 
-            return [TextContent(
-                type="text",
-                text=f"Set trig velocity to {velocity} on channel {channel+1}"
-            )]
+            return [TextContent(type="text", text=f"Set trig velocity to {velocity} on channel {channel + 1}")]
 
         elif name == "set_trig_length":
             length = arguments["length"]
             channel = arguments.get("channel", 1) - 1
 
             # NRPN MSB=3, LSB=2 for trig length
-            output_port.send(mido.Message('control_change', control=99, value=3, channel=channel))
-            output_port.send(mido.Message('control_change', control=98, value=2, channel=channel))
-            output_port.send(mido.Message('control_change', control=6, value=length, channel=channel))
-            output_port.send(mido.Message('control_change', control=38, value=0, channel=channel))
+            output_port.send(mido.Message("control_change", control=99, value=3, channel=channel))
+            output_port.send(mido.Message("control_change", control=98, value=2, channel=channel))
+            output_port.send(mido.Message("control_change", control=6, value=length, channel=channel))
+            output_port.send(mido.Message("control_change", control=38, value=0, channel=channel))
 
-            return [TextContent(
-                type="text",
-                text=f"Set trig length to {length} on channel {channel+1}"
-            )]
+            return [TextContent(type="text", text=f"Set trig length to {length} on channel {channel + 1}")]
 
         elif name == "reset_velocities":
             velocity = arguments.get("velocity", 120)
@@ -1991,62 +1848,52 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 channel = track - 1  # Track 1 = channel 0, etc.
 
                 # NRPN MSB=3, LSB=1 for trig velocity
-                output_port.send(mido.Message('control_change', control=99, value=3, channel=channel))
-                output_port.send(mido.Message('control_change', control=98, value=1, channel=channel))
-                output_port.send(mido.Message('control_change', control=6, value=velocity, channel=channel))
-                output_port.send(mido.Message('control_change', control=38, value=0, channel=channel))
+                output_port.send(mido.Message("control_change", control=99, value=3, channel=channel))
+                output_port.send(mido.Message("control_change", control=98, value=1, channel=channel))
+                output_port.send(mido.Message("control_change", control=6, value=velocity, channel=channel))
+                output_port.send(mido.Message("control_change", control=38, value=0, channel=channel))
 
-            return [TextContent(
-                type="text",
-                text=f"Reset velocity to {velocity} on all 8 audio tracks"
-            )]
+            return [TextContent(type="text", text=f"Reset velocity to {velocity} on all 8 audio tracks")]
 
         elif name == "send_midi_start":
             # Send MIDI Start message (0xFA)
-            msg = mido.Message('start')
+            msg = mido.Message("start")
             output_port.send(msg)
             log_transport("START")
 
-            return [TextContent(
-                type="text",
-                text="Sent MIDI Start - sequencer should start from beginning"
-            )]
+            return [TextContent(type="text", text="Sent MIDI Start - sequencer should start from beginning")]
 
         elif name == "send_midi_stop":
             # Send MIDI Stop message (0xFC)
-            msg = mido.Message('stop')
+            msg = mido.Message("stop")
             output_port.send(msg)
             log_transport("STOP")
 
-            return [TextContent(
-                type="text",
-                text="Sent MIDI Stop - sequencer should stop"
-            )]
+            return [TextContent(type="text", text="Sent MIDI Stop - sequencer should stop")]
 
         elif name == "send_midi_continue":
             # Send MIDI Continue message (0xFB)
-            msg = mido.Message('continue')
+            msg = mido.Message("continue")
             output_port.send(msg)
             log_transport("CONTINUE")
 
-            return [TextContent(
-                type="text",
-                text="Sent MIDI Continue - sequencer should resume from current position"
-            )]
+            return [TextContent(type="text", text="Sent MIDI Continue - sequencer should resume from current position")]
 
         elif name == "send_song_position":
             position = arguments["position"]
 
             # Send MIDI Song Position Pointer (0xF2)
             # Position is in MIDI beats (16th notes)
-            msg = mido.Message('songpos', pos=position)
+            msg = mido.Message("songpos", pos=position)
             output_port.send(msg)
-            logger.info(f"📍 SONG POSITION: {position} (bar {position/16:.2f})")
+            logger.info(f"📍 SONG POSITION: {position} (bar {position / 16:.2f})")
 
-            return [TextContent(
-                type="text",
-                text=f"Sent Song Position Pointer to position {position} (16th note: {position}, bar: {position/16:.2f})"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Sent Song Position Pointer to position {position} (16th note: {position}, bar: {position / 16:.2f})",
+                )
+            ]
 
         elif name == "play_with_clock":
             bars = arguments.get("bars", 4)
@@ -2063,16 +1910,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             logger.info(f"▶️  PLAY: {bars} bars @ {bpm} BPM ({total_pulses} clock pulses)")
 
             # Send Start message
-            output_port.send(mido.Message('start'))
+            output_port.send(mido.Message("start"))
             log_transport("START")
 
             # Use absolute timing to prevent drift
             import time
+
             start_time = time.time()
 
             # Send clock pulses with precise timing
             for i in range(total_pulses):
-                output_port.send(mido.Message('clock'))
+                output_port.send(mido.Message("clock"))
 
                 # Calculate when next pulse should occur
                 next_pulse_time = start_time + (i + 1) * clock_interval
@@ -2083,16 +1931,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Optionally send Stop
             if send_stop:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 log_transport("STOP")
                 status = "and stopped"
             else:
                 status = "(still running)"
 
-            return [TextContent(
-                type="text",
-                text=f"Played {bars} bars at {bpm} BPM {status}"
-            )]
+            return [TextContent(type="text", text=f"Played {bars} bars at {bpm} BPM {status}")]
 
         elif name == "play_pattern_with_tracks":
             bars = arguments.get("bars", 4)
@@ -2120,22 +1965,23 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             logger.info(f"▶️  PLAY PATTERN: {bars} bars @ {bpm} BPM, {len(triggers)} triggers")
 
             # Send Start message
-            output_port.send(mido.Message('start'))
+            output_port.send(mido.Message("start"))
             log_transport("START")
 
             import time
+
             start_time = time.time()
             trigger_idx = 0
 
             # Send clock pulses and triggers
             for i in range(total_pulses):
-                output_port.send(mido.Message('clock'))
+                output_port.send(mido.Message("clock"))
 
                 # Check if we need to send any triggers at this pulse
                 while trigger_idx < len(trigger_schedule) and trigger_schedule[trigger_idx][0] == i:
                     pulse, track, velocity, beat = trigger_schedule[trigger_idx]
                     note = track - 1  # Track 1-8 = note 0-7
-                    output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=0))
+                    output_port.send(mido.Message("note_on", note=note, velocity=velocity, channel=0))
                     log_note_on(note, velocity, 0)
                     # Schedule note off after short duration
                     asyncio.create_task(_delayed_note_off(note, 0.05, 0))
@@ -2150,16 +1996,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Optionally send Stop
             if send_stop:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 log_transport("STOP")
                 status = "and stopped"
             else:
                 status = "(still running)"
 
-            return [TextContent(
-                type="text",
-                text=f"Played {bars} bars at {bpm} BPM with {len(triggers)} track triggers {status}"
-            )]
+            return [
+                TextContent(
+                    type="text", text=f"Played {bars} bars at {bpm} BPM with {len(triggers)} track triggers {status}"
+                )
+            ]
 
         elif name == "play_pattern_with_melody":
             global last_melody
@@ -2173,7 +2020,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             last_melody = {
                 "bpm": bpm,
                 "notes": notes,
-                "channel": channel + 1  # Store as 1-based
+                "channel": channel + 1,  # Store as 1-based
             }
 
             # Calculate timing
@@ -2193,24 +2040,25 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Sort by pulse index
             note_schedule.sort(key=lambda x: x[0])
 
-            logger.info(f"▶️  PLAY MELODY: {bars} bars @ {bpm} BPM, {len(notes)} notes on ch={channel+1}")
+            logger.info(f"▶️  PLAY MELODY: {bars} bars @ {bpm} BPM, {len(notes)} notes on ch={channel + 1}")
 
             # Send Start message
-            output_port.send(mido.Message('start'))
+            output_port.send(mido.Message("start"))
             log_transport("START")
 
             import time
+
             start_time = time.time()
             note_idx = 0
 
             # Send clock pulses and notes
             for i in range(total_pulses):
-                output_port.send(mido.Message('clock'))
+                output_port.send(mido.Message("clock"))
 
                 # Check if we need to send any notes at this pulse
                 while note_idx < len(note_schedule) and note_schedule[note_idx][0] == i:
                     pulse, note, velocity, duration = note_schedule[note_idx]
-                    output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=channel))
+                    output_port.send(mido.Message("note_on", note=note, velocity=velocity, channel=channel))
                     log_note_on(note, velocity, channel)
                     # Schedule note off after duration
                     asyncio.create_task(_delayed_note_off(note, duration, channel))
@@ -2225,16 +2073,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Optionally send Stop
             if send_stop:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 log_transport("STOP")
                 status = "and stopped"
             else:
                 status = "(still running)"
 
-            return [TextContent(
-                type="text",
-                text=f"Played {bars} bars at {bpm} BPM with {len(notes)} melody notes {status}"
-            )]
+            return [
+                TextContent(
+                    type="text", text=f"Played {bars} bars at {bpm} BPM with {len(notes)} melody notes {status}"
+                )
+            ]
 
         elif name == "play_pattern_with_loop":
             bars = arguments.get("bars", 4)
@@ -2262,14 +2111,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             loop_schedule.sort(key=lambda x: x[0])
 
             # Send Start message
-            output_port.send(mido.Message('start'))
+            output_port.send(mido.Message("start"))
 
             import time
+
             start_time = time.time()
 
             # Send clock pulses and looped notes
             for i in range(total_pulses):
-                output_port.send(mido.Message('clock'))
+                output_port.send(mido.Message("clock"))
 
                 # Calculate position within loop
                 loop_position = i % loop_pulses
@@ -2277,7 +2127,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 # Check if we need to send any notes at this position in the loop
                 for pulse_offset, note, velocity in loop_schedule:
                     if pulse_offset == loop_position:
-                        output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=channel))
+                        output_port.send(mido.Message("note_on", note=note, velocity=velocity, channel=channel))
                         # Schedule note off after short duration
                         asyncio.create_task(_delayed_note_off(note, 0.05, channel))
 
@@ -2290,16 +2140,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Optionally send Stop
             if send_stop:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 status = "and stopped"
             else:
                 status = "(still running)"
 
             num_loops = bars / loop_length
-            return [TextContent(
-                type="text",
-                text=f"Played {bars} bars at {bpm} BPM with {len(loop_notes)} notes looping every {loop_length} bar(s) ({num_loops:.1f} loops) {status}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Played {bars} bars at {bpm} BPM with {len(loop_notes)} notes looping every {loop_length} bar(s) ({num_loops:.1f} loops) {status}",
+                )
+            ]
 
         elif name == "play_pattern_with_tracks_and_melody":
             bars = arguments.get("bars", 4)
@@ -2353,6 +2205,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             event_schedule.sort(key=lambda x: x[1])
 
             import time
+
             start_time = time.time()
             event_idx = 0
             midi_started = False
@@ -2365,18 +2218,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     if midi_start_at_beat > 0:
                         # SPP is in "MIDI beats" (16th notes), so 1 quarter note = 4 MIDI beats
                         spp_position = int(midi_start_at_beat * 4)
-                        output_port.send(mido.Message('songpos', pos=spp_position))
-                    output_port.send(mido.Message('start'))
+                        output_port.send(mido.Message("songpos", pos=spp_position))
+                    output_port.send(mido.Message("start"))
                     midi_started = True
 
                 # Send MIDI Clock only if we've started
                 if midi_started:
-                    output_port.send(mido.Message('clock'))
+                    output_port.send(mido.Message("clock"))
 
                 # Check if we need to send any events at this pulse
                 while event_idx < len(event_schedule) and event_schedule[event_idx][1] == i:
                     event_type, pulse, note, velocity, duration, ch = event_schedule[event_idx]
-                    output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=ch))
+                    output_port.send(mido.Message("note_on", note=note, velocity=velocity, channel=ch))
                     # Schedule note off after duration
                     asyncio.create_task(_delayed_note_off(note, duration, ch))
                     event_idx += 1
@@ -2390,7 +2243,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Optionally send Stop (only if we actually started)
             if send_stop and midi_started:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 status = "and stopped"
             elif midi_started:
                 status = "(still running)"
@@ -2398,10 +2251,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 status = "(no MIDI Start sent - all notes before midi_start_at_beat)"
 
             count_in_info = f" (MIDI Start at beat {midi_start_at_beat})" if midi_start_at_beat > 0 else ""
-            return [TextContent(
-                type="text",
-                text=f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} track triggers and {len(melody_notes)} melody notes{count_in_info} {status}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} track triggers and {len(melody_notes)} melody notes{count_in_info} {status}",
+                )
+            ]
 
         elif name == "play_pattern_with_multi_channel_midi":
             bars = arguments.get("bars", 4)
@@ -2434,11 +2289,21 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     for track_key, track_params in parameter_automation.items():
                         track_num = int(track_key)  # Convert string key to int
                         if not isinstance(track_params, dict):
-                            return [TextContent(type="text", text=f"Error: Track {track_num} automation must be a dict of parameters")]
+                            return [
+                                TextContent(
+                                    type="text",
+                                    text=f"Error: Track {track_num} automation must be a dict of parameters",
+                                )
+                            ]
                         for param_name, events in track_params.items():
                             param_info = get_parameter_info(param_name)
                             if not param_info:
-                                return [TextContent(type="text", text=f"Error: Unknown parameter '{param_name}' for track {track_num}")]
+                                return [
+                                    TextContent(
+                                        type="text",
+                                        text=f"Error: Unknown parameter '{param_name}' for track {track_num}",
+                                    )
+                                ]
                             for beat, value in events:
                                 is_valid, error_msg = validate_parameter(param_name, value)
                                 if not is_valid:
@@ -2547,6 +2412,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             event_schedule.sort(key=lambda x: x[1])
 
             import time
+
             start_time = time.time()
             event_idx = 0
             midi_started = False
@@ -2559,13 +2425,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     if midi_start_at_beat > 0:
                         # SPP is in "MIDI beats" (16th notes), so 1 quarter note = 4 MIDI beats
                         spp_position = int(midi_start_at_beat * 4)
-                        output_port.send(mido.Message('songpos', pos=spp_position))
-                    output_port.send(mido.Message('start'))
+                        output_port.send(mido.Message("songpos", pos=spp_position))
+                    output_port.send(mido.Message("start"))
                     midi_started = True
 
                 # Send MIDI Clock only if we've started and send_clock is True
                 if midi_started and send_clock:
-                    output_port.send(mido.Message('clock'))
+                    output_port.send(mido.Message("clock"))
 
                 # Check if we need to send any events at this pulse
                 while event_idx < len(event_schedule) and event_schedule[event_idx][1] == i:
@@ -2593,7 +2459,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         velocity = data2
                         duration = data3
                         ch = data4
-                        output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=ch))
+                        output_port.send(mido.Message("note_on", note=note, velocity=velocity, channel=ch))
                         # Schedule note off after duration
                         asyncio.create_task(_delayed_note_off(note, duration, ch))
 
@@ -2608,7 +2474,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Optionally send Stop (only if we actually started)
             if send_stop and midi_started:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 status = "and stopped"
             elif midi_started:
                 status = "(still running)"
@@ -2622,25 +2488,24 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 "bpm": bpm,
                 "track_triggers": track_triggers,
                 "midi_channels": midi_channels,
-                "parameter_automation": parameter_automation
+                "parameter_automation": parameter_automation,
             }
 
             num_channels = len(midi_channels)
             count_in_info = f" (MIDI Start at beat {midi_start_at_beat})" if midi_start_at_beat > 0 else ""
             param_info = f" and {total_param_events} parameter changes" if total_param_events > 0 else ""
-            return [TextContent(
-                type="text",
-                text=f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} track triggers, {total_midi_notes} MIDI notes across {num_channels} channels{param_info}{count_in_info} {status}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} track triggers, {total_midi_notes} MIDI notes across {num_channels} channels{param_info}{count_in_info} {status}",
+                )
+            ]
 
         elif name == "save_last_melody":
             filename = arguments["filename"]
 
             if not last_melody:
-                return [TextContent(
-                    type="text",
-                    text="Error: No melody to save. Use play_pattern_with_melody first."
-                )]
+                return [TextContent(type="text", text="Error: No melody to save. Use play_pattern_with_melody first.")]
 
             # Create a MIDI file
             mid = mido.MidiFile(ticks_per_beat=480)
@@ -2650,7 +2515,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Set tempo
             bpm = last_melody["bpm"]
             tempo = mido.bpm2tempo(bpm)
-            track.append(mido.MetaMessage('set_tempo', tempo=tempo, time=0))
+            track.append(mido.MetaMessage("set_tempo", tempo=tempo, time=0))
 
             # Add notes
             notes = last_melody["notes"]
@@ -2681,27 +2546,21 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 delta_time = tick_time - current_time
 
                 if event_type == "on":
-                    track.append(mido.Message('note_on', note=note, velocity=velocity, channel=ch, time=delta_time))
+                    track.append(mido.Message("note_on", note=note, velocity=velocity, channel=ch, time=delta_time))
                 else:
-                    track.append(mido.Message('note_off', note=note, velocity=velocity, channel=ch, time=delta_time))
+                    track.append(mido.Message("note_off", note=note, velocity=velocity, channel=ch, time=delta_time))
 
                 current_time = tick_time
 
             # Add end of track
-            track.append(mido.MetaMessage('end_of_track', time=0))
+            track.append(mido.MetaMessage("end_of_track", time=0))
 
             # Save to file
             try:
                 mid.save(filename)
-                return [TextContent(
-                    type="text",
-                    text=f"Saved melody to {filename} ({len(notes)} notes at {bpm} BPM)"
-                )]
+                return [TextContent(type="text", text=f"Saved melody to {filename} ({len(notes)} notes at {bpm} BPM)")]
             except Exception as e:
-                return [TextContent(
-                    type="text",
-                    text=f"Error saving MIDI file: {str(e)}"
-                )]
+                return [TextContent(type="text", text=f"Error saving MIDI file: {str(e)}")]
 
         elif name == "send_filter_sweep":
             import math
@@ -2736,11 +2595,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send CC messages with timing
             import time
+
             start_time = time.time()
 
             for i, value in enumerate(values):
                 # Send CC 74 (filter cutoff)
-                msg = mido.Message('control_change', control=74, value=value, channel=channel)
+                msg = mido.Message("control_change", control=74, value=value, channel=channel)
                 output_port.send(msg)
 
                 # Calculate when next message should be sent
@@ -2750,10 +2610,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     if sleep_duration > 0:
                         await asyncio.sleep(sleep_duration)
 
-            return [TextContent(
-                type="text",
-                text=f"Sent filter sweep from {start_value} to {end_value} over {duration_sec}s ({curve} curve, {steps} steps) on channel {channel+1}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Sent filter sweep from {start_value} to {end_value} over {duration_sec}s ({curve} curve, {steps} steps) on channel {channel + 1}",
+                )
+            ]
 
         elif name == "send_filter_envelope":
             attack_sec = arguments["attack_sec"]
@@ -2792,12 +2654,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send CC messages with timing
             import time
+
             start_time = time.time()
             current_time = 0
 
             for i, (interval, value) in enumerate(stages):
                 # Send CC 74 (filter cutoff)
-                msg = mido.Message('control_change', control=74, value=value, channel=channel)
+                msg = mido.Message("control_change", control=74, value=value, channel=channel)
                 output_port.send(msg)
 
                 # Wait for interval
@@ -2809,10 +2672,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         await asyncio.sleep(sleep_duration)
 
             total_time = attack_sec + decay_sec + release_sec
-            return [TextContent(
-                type="text",
-                text=f"Sent filter ADSR envelope: A={attack_sec}s D={decay_sec}s S={sustain_level} R={release_sec}s (total {total_time:.2f}s) on channel {channel+1}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Sent filter ADSR envelope: A={attack_sec}s D={decay_sec}s S={sustain_level} R={release_sec}s (total {total_time:.2f}s) on channel {channel + 1}",
+                )
+            ]
 
         elif name == "play_with_filter_automation":
             bars = arguments.get("bars", 4)
@@ -2849,9 +2714,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send Start if requested
             if send_clock:
-                output_port.send(mido.Message('start'))
+                output_port.send(mido.Message("start"))
 
             import time
+
             start_time = time.time()
             trigger_idx = 0
             filter_idx = 0
@@ -2860,19 +2726,19 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             for i in range(total_pulses):
                 # Send clock if requested
                 if send_clock:
-                    output_port.send(mido.Message('clock'))
+                    output_port.send(mido.Message("clock"))
 
                 # Check for track triggers at this pulse
                 while trigger_idx < len(trigger_schedule) and trigger_schedule[trigger_idx][0] == i:
                     pulse, note, velocity = trigger_schedule[trigger_idx]
-                    output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=0))
+                    output_port.send(mido.Message("note_on", note=note, velocity=velocity, channel=0))
                     asyncio.create_task(_delayed_note_off(note, 0.05, 0))
                     trigger_idx += 1
 
                 # Check for filter events at this pulse
                 while filter_idx < len(filter_schedule) and filter_schedule[filter_idx][0] == i:
                     pulse, cutoff = filter_schedule[filter_idx]
-                    output_port.send(mido.Message('control_change', control=74, value=cutoff, channel=channel))
+                    output_port.send(mido.Message("control_change", control=74, value=cutoff, channel=channel))
                     filter_idx += 1
 
                 # Calculate when next pulse should occur
@@ -2884,17 +2750,19 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send Stop if requested
             if send_clock and send_stop:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 status = "and stopped"
             elif send_clock:
                 status = "(still running)"
             else:
                 status = "(no transport control)"
 
-            return [TextContent(
-                type="text",
-                text=f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} track triggers and {len(filter_events)} filter events {status}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} track triggers and {len(filter_events)} filter events {status}",
+                )
+            ]
 
         elif name == "set_parameter":
             parameter = arguments["parameter"]
@@ -2909,10 +2777,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Send parameter change
             send_parameter_change(parameter, value, channel)
 
-            return [TextContent(
-                type="text",
-                text=f"Set {parameter} to {value} on channel {channel + 1}"
-            )]
+            return [TextContent(type="text", text=f"Set {parameter} to {value} on channel {channel + 1}")]
 
         elif name == "send_parameter_sweep":
             import math
@@ -2952,6 +2817,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send parameter changes with timing
             import time
+
             start_time = time.time()
 
             for i, value in enumerate(values):
@@ -2963,10 +2829,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     if sleep_duration > 0:
                         await asyncio.sleep(sleep_duration)
 
-            return [TextContent(
-                type="text",
-                text=f"Sent {parameter} sweep from {start_value} to {end_value} over {duration_sec}s ({curve} curve, {steps} steps) on channel {channel+1}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Sent {parameter} sweep from {start_value} to {end_value} over {duration_sec}s ({curve} curve, {steps} steps) on channel {channel + 1}",
+                )
+            ]
 
         elif name == "send_parameter_envelope":
             parameter = arguments["parameter"]
@@ -3011,6 +2879,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send parameter changes with timing
             import time
+
             start_time = time.time()
             current_time = 0
 
@@ -3025,10 +2894,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         await asyncio.sleep(sleep_duration)
 
             total_time = attack_sec + decay_sec + release_sec
-            return [TextContent(
-                type="text",
-                text=f"Sent {parameter} ADSR envelope: A={attack_sec}s D={decay_sec}s S={sustain_level} R={release_sec}s (total {total_time:.2f}s) on channel {channel+1}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Sent {parameter} ADSR envelope: A={attack_sec}s D={decay_sec}s S={sustain_level} R={release_sec}s (total {total_time:.2f}s) on channel {channel + 1}",
+                )
+            ]
 
         elif name == "play_pattern_with_parameter_automation":
             bars = arguments.get("bars", 4)
@@ -3076,23 +2947,24 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send Start if requested
             if send_clock:
-                output_port.send(mido.Message('start'))
+                output_port.send(mido.Message("start"))
 
             import time
+
             start_time = time.time()
             trigger_idx = 0
-            param_indices = {param_name: 0 for param_name in param_schedules.keys()}
+            param_indices = dict.fromkeys(param_schedules.keys(), 0)
 
             # Send clock pulses, triggers, and parameter automation
             for i in range(total_pulses):
                 # Send clock if requested
                 if send_clock:
-                    output_port.send(mido.Message('clock'))
+                    output_port.send(mido.Message("clock"))
 
                 # Check for track triggers at this pulse
                 while trigger_idx < len(trigger_schedule) and trigger_schedule[trigger_idx][0] == i:
                     pulse, note, velocity = trigger_schedule[trigger_idx]
-                    output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=0))
+                    output_port.send(mido.Message("note_on", note=note, velocity=velocity, channel=0))
                     asyncio.create_task(_delayed_note_off(note, 0.05, 0))
                     trigger_idx += 1
 
@@ -3114,7 +2986,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send Stop if requested
             if send_clock and send_stop:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 status = "and stopped"
             elif send_clock:
                 status = "(still running)"
@@ -3123,10 +2995,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             total_events = sum(len(events) for events in parameter_automation.values())
             param_list = ", ".join(parameter_automation.keys())
-            return [TextContent(
-                type="text",
-                text=f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} track triggers and {total_events} parameter events ({param_list}) {status}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} track triggers and {total_events} parameter events ({param_list}) {status}",
+                )
+            ]
 
         elif name == "save_automation_preset":
             preset_name = arguments["preset_name"]
@@ -3134,42 +3008,32 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             description = arguments.get("description", "")
 
             # Ensure preset name doesn't have .json extension
-            if preset_name.endswith('.json'):
+            if preset_name.endswith(".json"):
                 preset_name = preset_name[:-5]
 
             preset_file = PRESET_DIR / f"{preset_name}.json"
 
-            preset_data = {
-                "name": preset_name,
-                "description": description,
-                "automation": automation
-            }
+            preset_data = {"name": preset_name, "description": description, "automation": automation}
 
-            with open(preset_file, 'w') as f:
+            with open(preset_file, "w") as f:
                 json.dump(preset_data, f, indent=2)
 
-            return [TextContent(
-                type="text",
-                text=f"Saved automation preset '{preset_name}' to {preset_file}"
-            )]
+            return [TextContent(type="text", text=f"Saved automation preset '{preset_name}' to {preset_file}")]
 
         elif name == "load_automation_preset":
             preset_name = arguments["preset_name"]
             play = arguments.get("play", False)
 
             # Ensure preset name doesn't have .json extension
-            if preset_name.endswith('.json'):
+            if preset_name.endswith(".json"):
                 preset_name = preset_name[:-5]
 
             preset_file = PRESET_DIR / f"{preset_name}.json"
 
             if not preset_file.exists():
-                return [TextContent(
-                    type="text",
-                    text=f"Error: Preset '{preset_name}' not found at {preset_file}"
-                )]
+                return [TextContent(type="text", text=f"Error: Preset '{preset_name}' not found at {preset_file}")]
 
-            with open(preset_file, 'r') as f:
+            with open(preset_file) as f:
                 preset_data = json.load(f)
 
             automation = preset_data.get("automation", {})
@@ -3185,25 +3049,24 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
                 return [TextContent(type="text", text=result_text)]
             else:
-                return [TextContent(
-                    type="text",
-                    text=f"Loaded preset '{preset_name}'\nDescription: {preset_data.get('description', 'N/A')}\nAutomation data: {json.dumps(automation, indent=2)}"
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Loaded preset '{preset_name}'\nDescription: {preset_data.get('description', 'N/A')}\nAutomation data: {json.dumps(automation, indent=2)}",
+                    )
+                ]
 
         elif name == "list_automation_presets":
             preset_files = list(PRESET_DIR.glob("*.json"))
 
             if not preset_files:
-                return [TextContent(
-                    type="text",
-                    text=f"No presets found in {PRESET_DIR}"
-                )]
+                return [TextContent(type="text", text=f"No presets found in {PRESET_DIR}")]
 
             result = f"Available automation presets ({len(preset_files)}):\n\n"
 
             for preset_file in sorted(preset_files):
                 try:
-                    with open(preset_file, 'r') as f:
+                    with open(preset_file) as f:
                         preset_data = json.load(f)
                     name = preset_data.get("name", preset_file.stem)
                     description = preset_data.get("description", "No description")
@@ -3227,7 +3090,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             description = arguments.get("description", "")
 
             # Ensure pattern name doesn't have extension
-            if pattern_name.endswith('.json'):
+            if pattern_name.endswith(".json"):
                 pattern_name = pattern_name[:-5]
 
             pattern_file = PATTERN_DIR / f"{pattern_name}.json"
@@ -3240,19 +3103,21 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 "track_triggers": track_triggers,
                 "midi_channels": midi_channels,
                 "parameter_automation": parameter_automation,
-                "automation_loop_bars": automation_loop_bars
+                "automation_loop_bars": automation_loop_bars,
             }
 
-            with open(pattern_file, 'w') as f:
+            with open(pattern_file, "w") as f:
                 json.dump(pattern_data, f, indent=2)
 
-            return [TextContent(
-                type="text",
-                text=f"Saved pattern '{pattern_name}' to {pattern_file}\n" +
-                     f"  BPM: {bpm}, Bars: {bars}\n" +
-                     f"  Track triggers: {len(track_triggers)}\n" +
-                     f"  MIDI channels: {list(midi_channels.keys())}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Saved pattern '{pattern_name}' to {pattern_file}\n"
+                    + f"  BPM: {bpm}, Bars: {bars}\n"
+                    + f"  Track triggers: {len(track_triggers)}\n"
+                    + f"  MIDI channels: {list(midi_channels.keys())}",
+                )
+            ]
 
         elif name == "load_pattern":
             pattern_name = arguments["pattern_name"]
@@ -3260,18 +3125,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             repeat = arguments.get("repeat", 1)
 
             # Ensure pattern name doesn't have extension
-            if pattern_name.endswith('.json'):
+            if pattern_name.endswith(".json"):
                 pattern_name = pattern_name[:-5]
 
             pattern_file = PATTERN_DIR / f"{pattern_name}.json"
 
             if not pattern_file.exists():
-                return [TextContent(
-                    type="text",
-                    text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}"
-                )]
+                return [TextContent(type="text", text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}")]
 
-            with open(pattern_file, 'r') as f:
+            with open(pattern_file) as f:
                 pattern_data = json.load(f)
 
             if play:
@@ -3313,7 +3175,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     "bpm": bpm,
                     "bars": bars,
                     "track_triggers": track_triggers,
-                    "midi_channels": midi_channels
+                    "midi_channels": midi_channels,
                 }
 
                 # Build play arguments and call the play handler
@@ -3325,43 +3187,44 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     "parameter_automation": parameter_automation,
                     "automation_loop_bars": automation_loop_bars,
                     "send_clock": True,
-                    "send_stop": True
+                    "send_stop": True,
                 }
 
                 # Call play_pattern_with_multi_channel_midi handler directly
                 result = await call_tool("play_pattern_with_multi_channel_midi", play_args)
-                return [TextContent(
-                    type="text",
-                    text=f"Loaded and played pattern '{pattern_name}' ({repeat}x)\n" +
-                         f"Description: {pattern_data.get('description', 'N/A')}\n" +
-                         result[0].text
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Loaded and played pattern '{pattern_name}' ({repeat}x)\n"
+                        + f"Description: {pattern_data.get('description', 'N/A')}\n"
+                        + result[0].text,
+                    )
+                ]
             else:
                 # Just return the pattern data
-                return [TextContent(
-                    type="text",
-                    text=f"Loaded pattern '{pattern_name}':\n" +
-                         f"  Description: {pattern_data.get('description', 'N/A')}\n" +
-                         f"  BPM: {pattern_data.get('bpm')}, Bars: {pattern_data.get('bars')}\n" +
-                         f"  Track triggers: {len(pattern_data.get('track_triggers', []))}\n" +
-                         f"  MIDI channels: {list(pattern_data.get('midi_channels', {}).keys())}\n\n" +
-                         f"Pattern data:\n{json.dumps(pattern_data, indent=2)}"
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Loaded pattern '{pattern_name}':\n"
+                        + f"  Description: {pattern_data.get('description', 'N/A')}\n"
+                        + f"  BPM: {pattern_data.get('bpm')}, Bars: {pattern_data.get('bars')}\n"
+                        + f"  Track triggers: {len(pattern_data.get('track_triggers', []))}\n"
+                        + f"  MIDI channels: {list(pattern_data.get('midi_channels', {}).keys())}\n\n"
+                        + f"Pattern data:\n{json.dumps(pattern_data, indent=2)}",
+                    )
+                ]
 
         elif name == "list_patterns":
             pattern_files = list(PATTERN_DIR.glob("*.json"))
 
             if not pattern_files:
-                return [TextContent(
-                    type="text",
-                    text=f"No patterns found in {PATTERN_DIR}"
-                )]
+                return [TextContent(type="text", text=f"No patterns found in {PATTERN_DIR}")]
 
             result = f"Available patterns ({len(pattern_files)}):\n\n"
 
             for pattern_file in sorted(pattern_files):
                 try:
-                    with open(pattern_file, 'r') as f:
+                    with open(pattern_file) as f:
                         pattern_data = json.load(f)
                     pname = pattern_data.get("name", pattern_file.stem)
                     desc = pattern_data.get("description", "No description")
@@ -3381,58 +3244,58 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             pattern_name = arguments["pattern_name"]
 
             # Ensure pattern name doesn't have extension
-            if pattern_name.endswith('.json'):
+            if pattern_name.endswith(".json"):
                 pattern_name = pattern_name[:-5]
 
             pattern_file = PATTERN_DIR / f"{pattern_name}.json"
 
             if not pattern_file.exists():
-                return [TextContent(
-                    type="text",
-                    text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}"
-                )]
+                return [TextContent(type="text", text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}")]
 
             pattern_file.unlink()
-            return [TextContent(
-                type="text",
-                text=f"Deleted pattern '{pattern_name}'"
-            )]
+            return [TextContent(type="text", text=f"Deleted pattern '{pattern_name}'")]
 
         elif name == "update_pattern":
             pattern_name = arguments["pattern_name"]
 
             # Ensure pattern name doesn't have extension
-            if pattern_name.endswith('.json'):
+            if pattern_name.endswith(".json"):
                 pattern_name = pattern_name[:-5]
 
             pattern_file = PATTERN_DIR / f"{pattern_name}.json"
 
             if not pattern_file.exists():
-                return [TextContent(
-                    type="text",
-                    text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}"
-                )]
+                return [TextContent(type="text", text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}")]
 
             # Load existing pattern
-            with open(pattern_file, 'r') as f:
+            with open(pattern_file) as f:
                 pattern_data = json.load(f)
 
             # Update only provided fields
             updated_fields = []
-            for field in ["bpm", "bars", "track_triggers", "midi_channels",
-                          "parameter_automation", "automation_loop_bars", "description"]:
+            for field in [
+                "bpm",
+                "bars",
+                "track_triggers",
+                "midi_channels",
+                "parameter_automation",
+                "automation_loop_bars",
+                "description",
+            ]:
                 if field in arguments:
                     pattern_data[field] = arguments[field]
                     updated_fields.append(field)
 
             # Save back
-            with open(pattern_file, 'w') as f:
+            with open(pattern_file, "w") as f:
                 json.dump(pattern_data, f, indent=2)
 
-            return [TextContent(
-                type="text",
-                text=f"Updated pattern '{pattern_name}':\n  Modified fields: {', '.join(updated_fields)}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Updated pattern '{pattern_name}':\n  Modified fields: {', '.join(updated_fields)}",
+                )
+            ]
 
         elif name == "edit_pattern_chords":
             pattern_name = arguments["pattern_name"]
@@ -3442,19 +3305,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             velocity = arguments.get("velocity", 75)
 
             # Ensure pattern name doesn't have extension
-            if pattern_name.endswith('.json'):
+            if pattern_name.endswith(".json"):
                 pattern_name = pattern_name[:-5]
 
             pattern_file = PATTERN_DIR / f"{pattern_name}.json"
 
             if not pattern_file.exists():
-                return [TextContent(
-                    type="text",
-                    text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}"
-                )]
+                return [TextContent(type="text", text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}")]
 
             # Load existing pattern
-            with open(pattern_file, 'r') as f:
+            with open(pattern_file) as f:
                 pattern_data = json.load(f)
 
             midi_channels = pattern_data.get("midi_channels", {})
@@ -3480,7 +3340,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 ch_str = str(ch)
                 if ch_str in midi_channels:
                     midi_channels[ch_str] = [
-                        n for n in midi_channels[ch_str]
+                        n
+                        for n in midi_channels[ch_str]
                         if abs(n[0] - beat_position) > 0.01  # Keep notes not at this position
                     ]
                 else:
@@ -3501,16 +3362,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             pattern_data["midi_channels"] = midi_channels
 
             # Save back
-            with open(pattern_file, 'w') as f:
+            with open(pattern_file, "w") as f:
                 json.dump(pattern_data, f, indent=2)
 
-            return [TextContent(
-                type="text",
-                text=f"Updated chord at bar {bar} in pattern '{pattern_name}':\n" +
-                     f"  Notes: {chord_notes}\n" +
-                     f"  Channels: {channels}\n" +
-                     f"  Duration: {duration:.2f} beats"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Updated chord at bar {bar} in pattern '{pattern_name}':\n"
+                    + f"  Notes: {chord_notes}\n"
+                    + f"  Channels: {channels}\n"
+                    + f"  Duration: {duration:.2f} beats",
+                )
+            ]
 
         elif name == "edit_pattern_triggers":
             pattern_name = arguments["pattern_name"]
@@ -3521,19 +3384,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             mode = arguments.get("mode", "add")
 
             # Ensure pattern name doesn't have extension
-            if pattern_name.endswith('.json'):
+            if pattern_name.endswith(".json"):
                 pattern_name = pattern_name[:-5]
 
             pattern_file = PATTERN_DIR / f"{pattern_name}.json"
 
             if not pattern_file.exists():
-                return [TextContent(
-                    type="text",
-                    text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}"
-                )]
+                return [TextContent(type="text", text=f"Error: Pattern '{pattern_name}' not found at {pattern_file}")]
 
             # Load existing pattern
-            with open(pattern_file, 'r') as f:
+            with open(pattern_file) as f:
                 pattern_data = json.load(f)
 
             track_triggers = pattern_data.get("track_triggers", [])
@@ -3553,10 +3413,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 # Remove triggers at specified beats for this track
                 beats_set = set(beats)
                 original_count = len([t for t in track_triggers if t[1] == track])
-                track_triggers = [
-                    t for t in track_triggers
-                    if not (t[1] == track and t[0] in beats_set)
-                ]
+                track_triggers = [t for t in track_triggers if not (t[1] == track and t[0] in beats_set)]
                 removed_count = original_count - len([t for t in track_triggers if t[1] == track])
                 action = f"Removed {removed_count} triggers from track {track}"
 
@@ -3578,15 +3435,16 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             pattern_data["track_triggers"] = track_triggers
 
             # Save back
-            with open(pattern_file, 'w') as f:
+            with open(pattern_file, "w") as f:
                 json.dump(pattern_data, f, indent=2)
 
             track_count = len([t for t in track_triggers if t[1] == track])
-            return [TextContent(
-                type="text",
-                text=f"{action} in pattern '{pattern_name}'\n" +
-                     f"  Track {track} now has {track_count} triggers"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"{action} in pattern '{pattern_name}'\n" + f"  Track {track} now has {track_count} triggers",
+                )
+            ]
 
         elif name == "export_automation_to_midi":
             filename = arguments["filename"]
@@ -3594,11 +3452,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             channel = arguments.get("channel", 1) - 1
 
             # Ensure filename has .mid extension
-            if not filename.endswith('.mid'):
-                filename += '.mid'
+            if not filename.endswith(".mid"):
+                filename += ".mid"
 
             # Save to appropriate output directory
             import os
+
             # Always try /mnt/user-data/outputs/ first (Claude Desktop)
             # Fall back to ~/Downloads/ if /mnt/user-data doesn't exist (local testing)
             if os.path.exists("/mnt/user-data"):
@@ -3619,7 +3478,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Set tempo
             tempo = mido.bpm2tempo(bpm)
-            track.append(mido.MetaMessage('set_tempo', tempo=tempo))
+            track.append(mido.MetaMessage("set_tempo", tempo=tempo))
 
             # Convert parameter automation to MIDI messages
             # Collect all events with their timing
@@ -3635,9 +3494,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     ticks = int(beat * 480)
 
                     if param_info["type"] == "cc":
-                        events.append((ticks, 'cc', param_info["cc"], value))
+                        events.append((ticks, "cc", param_info["cc"], value))
                     elif param_info["type"] == "nrpn":
-                        events.append((ticks, 'nrpn', param_info["msb"], param_info["lsb"], value))
+                        events.append((ticks, "nrpn", param_info["msb"], param_info["lsb"], value))
 
             # Sort events by time
             events.sort(key=lambda x: x[0])
@@ -3645,44 +3504,48 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Add events to track with delta times
             last_ticks = 0
             for event in events:
-                if event[1] == 'cc':
+                if event[1] == "cc":
                     ticks, _, cc, value = event
                     delta = ticks - last_ticks
-                    track.append(mido.Message('control_change', control=cc, value=value, channel=channel, time=delta))
+                    track.append(mido.Message("control_change", control=cc, value=value, channel=channel, time=delta))
                     last_ticks = ticks
-                elif event[1] == 'nrpn':
+                elif event[1] == "nrpn":
                     ticks, _, msb, lsb, value = event
                     delta = ticks - last_ticks
                     # NRPN requires 4 CC messages
-                    track.append(mido.Message('control_change', control=99, value=msb, channel=channel, time=delta))
-                    track.append(mido.Message('control_change', control=98, value=lsb, channel=channel, time=0))
-                    track.append(mido.Message('control_change', control=6, value=value, channel=channel, time=0))
-                    track.append(mido.Message('control_change', control=38, value=0, channel=channel, time=0))
+                    track.append(mido.Message("control_change", control=99, value=msb, channel=channel, time=delta))
+                    track.append(mido.Message("control_change", control=98, value=lsb, channel=channel, time=0))
+                    track.append(mido.Message("control_change", control=6, value=value, channel=channel, time=0))
+                    track.append(mido.Message("control_change", control=38, value=0, channel=channel, time=0))
                     last_ticks = ticks
 
             # Save MIDI file
             mid.save(output_path)
 
-            return [TextContent(
-                type="text",
-                text=f"Exported automation to MIDI file: {output_path}\nBars: {bars}, BPM: {bpm}, Parameters: {', '.join(parameter_automation.keys())}"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Exported automation to MIDI file: {output_path}\nBars: {bars}, BPM: {bpm}, Parameters: {', '.join(parameter_automation.keys())}",
+                )
+            ]
 
         elif name == "save_last_pattern":
             filename = arguments.get("filename")
 
             if not last_multi_channel_pattern:
-                return [TextContent(
-                    type="text",
-                    text="Error: No pattern to save. Use play_pattern_with_multi_channel_midi first."
-                )]
+                return [
+                    TextContent(
+                        type="text", text="Error: No pattern to save. Use play_pattern_with_multi_channel_midi first."
+                    )
+                ]
 
             # Add .mid extension if needed
-            if not filename.endswith('.mid'):
-                filename += '.mid'
+            if not filename.endswith(".mid"):
+                filename += ".mid"
 
             # Save to appropriate output directory
             import os
+
             # Always try /mnt/user-data/outputs/ first (Claude Desktop)
             # Fall back to ~/Downloads/ if /mnt/user-data doesn't exist (local testing)
             if os.path.exists("/mnt/user-data"):
@@ -3694,10 +3557,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             try:
                 pattern = last_multi_channel_pattern
-                bpm = pattern['bpm']
-                bars = pattern['bars']
-                track_triggers = pattern['track_triggers']
-                midi_channels = pattern['midi_channels']
+                bpm = pattern["bpm"]
+                bars = pattern["bars"]
+                track_triggers = pattern["track_triggers"]
+                midi_channels = pattern["midi_channels"]
                 ticks_per_beat = 480
 
                 def beats_to_ticks(beat):
@@ -3710,8 +3573,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 tempo_track = mido.MidiTrack()
                 mid.tracks.append(tempo_track)
                 tempo = mido.bpm2tempo(bpm)
-                tempo_track.append(mido.MetaMessage('set_tempo', tempo=tempo, time=0))
-                tempo_track.append(mido.MetaMessage('end_of_track', time=0))
+                tempo_track.append(mido.MetaMessage("set_tempo", tempo=tempo, time=0))
+                tempo_track.append(mido.MetaMessage("end_of_track", time=0))
 
                 # Organize events by channel
                 track_events = {}  # channel -> list of events
@@ -3736,20 +3599,18 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         if channel not in track_events:
                             track_events[channel] = []
 
-                        track_events[channel].append({
-                            'type': 'note_on',
-                            'beat': beat,
-                            'note': note,
-                            'velocity': velocity,
-                            'channel': channel
-                        })
-                        track_events[channel].append({
-                            'type': 'note_off',
-                            'beat': beat + duration,
-                            'note': note,
-                            'velocity': 0,
-                            'channel': channel
-                        })
+                        track_events[channel].append(
+                            {"type": "note_on", "beat": beat, "note": note, "velocity": velocity, "channel": channel}
+                        )
+                        track_events[channel].append(
+                            {
+                                "type": "note_off",
+                                "beat": beat + duration,
+                                "note": note,
+                                "velocity": 0,
+                                "channel": channel,
+                            }
+                        )
 
                 # Process MIDI channel notes (external synths)
                 for channel_str, notes in midi_channels.items():
@@ -3767,23 +3628,21 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         else:
                             continue
 
-                        track_events[channel].append({
-                            'type': 'note_on',
-                            'beat': beat,
-                            'note': note,
-                            'velocity': velocity,
-                            'channel': channel
-                        })
-                        track_events[channel].append({
-                            'type': 'note_off',
-                            'beat': beat + duration,
-                            'note': note,
-                            'velocity': 0,
-                            'channel': channel
-                        })
+                        track_events[channel].append(
+                            {"type": "note_on", "beat": beat, "note": note, "velocity": velocity, "channel": channel}
+                        )
+                        track_events[channel].append(
+                            {
+                                "type": "note_off",
+                                "beat": beat + duration,
+                                "note": note,
+                                "velocity": 0,
+                                "channel": channel,
+                            }
+                        )
 
                 # Process parameter automation
-                parameter_automation = pattern.get('parameter_automation', {})
+                parameter_automation = pattern.get("parameter_automation", {})
                 if parameter_automation:
                     # Detect format: global vs per-track
                     first_key = next(iter(parameter_automation.keys()))
@@ -3810,22 +3669,26 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
                                 for beat, value in param_events:
                                     if param_info["type"] == "cc":
-                                        track_events[param_channel].append({
-                                            'type': 'cc',
-                                            'beat': beat,
-                                            'cc': param_info["cc"],
-                                            'value': value,
-                                            'channel': param_channel
-                                        })
+                                        track_events[param_channel].append(
+                                            {
+                                                "type": "cc",
+                                                "beat": beat,
+                                                "cc": param_info["cc"],
+                                                "value": value,
+                                                "channel": param_channel,
+                                            }
+                                        )
                                     elif param_info["type"] == "nrpn":
-                                        track_events[param_channel].append({
-                                            'type': 'nrpn',
-                                            'beat': beat,
-                                            'msb': param_info["msb"],
-                                            'lsb': param_info["lsb"],
-                                            'value': value,
-                                            'channel': param_channel
-                                        })
+                                        track_events[param_channel].append(
+                                            {
+                                                "type": "nrpn",
+                                                "beat": beat,
+                                                "msb": param_info["msb"],
+                                                "lsb": param_info["lsb"],
+                                                "value": value,
+                                                "channel": param_channel,
+                                            }
+                                        )
                     else:
                         # Global format: {'param': [[beat, val], ...]}
                         # Use channel 0 for parameter automation
@@ -3840,31 +3703,35 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
                             for beat, value in param_events:
                                 if param_info["type"] == "cc":
-                                    track_events[param_channel].append({
-                                        'type': 'cc',
-                                        'beat': beat,
-                                        'cc': param_info["cc"],
-                                        'value': value,
-                                        'channel': param_channel
-                                    })
+                                    track_events[param_channel].append(
+                                        {
+                                            "type": "cc",
+                                            "beat": beat,
+                                            "cc": param_info["cc"],
+                                            "value": value,
+                                            "channel": param_channel,
+                                        }
+                                    )
                                 elif param_info["type"] == "nrpn":
-                                    track_events[param_channel].append({
-                                        'type': 'nrpn',
-                                        'beat': beat,
-                                        'msb': param_info["msb"],
-                                        'lsb': param_info["lsb"],
-                                        'value': value,
-                                        'channel': param_channel
-                                    })
+                                    track_events[param_channel].append(
+                                        {
+                                            "type": "nrpn",
+                                            "beat": beat,
+                                            "msb": param_info["msb"],
+                                            "lsb": param_info["lsb"],
+                                            "value": value,
+                                            "channel": param_channel,
+                                        }
+                                    )
 
                 # Create MIDI tracks for each channel
                 track_names = {
-                    0: 'Track 1 (Kick)',
-                    1: 'Track 2 (Snare)',
-                    2: 'Track 3 (Hats)',
-                    8: 'Track 9',
-                    11: 'Track 12',
-                    12: 'Track 13'
+                    0: "Track 1 (Kick)",
+                    1: "Track 2 (Snare)",
+                    2: "Track 3 (Hats)",
+                    8: "Track 9",
+                    11: "Track 12",
+                    12: "Track 13",
                 }
 
                 total_notes = 0
@@ -3873,64 +3740,91 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     mid.tracks.append(track)
 
                     # Add track name
-                    track_name = track_names.get(channel, f'Channel {channel + 1}')
-                    track.append(mido.MetaMessage('track_name', name=track_name, time=0))
+                    track_name = track_names.get(channel, f"Channel {channel + 1}")
+                    track.append(mido.MetaMessage("track_name", name=track_name, time=0))
 
                     # Sort events by beat
-                    events = sorted(track_events[channel], key=lambda x: x['beat'])
+                    events = sorted(track_events[channel], key=lambda x: x["beat"])
 
                     # Write events with delta times
                     current_tick = 0
                     for event in events:
-                        event_tick = beats_to_ticks(event['beat'])
+                        event_tick = beats_to_ticks(event["beat"])
                         delta = event_tick - current_tick
 
-                        if event['type'] == 'note_on':
-                            track.append(mido.Message('note_on',
-                                                    note=event['note'],
-                                                    velocity=event['velocity'],
-                                                    time=delta,
-                                                    channel=event['channel']))
+                        if event["type"] == "note_on":
+                            track.append(
+                                mido.Message(
+                                    "note_on",
+                                    note=event["note"],
+                                    velocity=event["velocity"],
+                                    time=delta,
+                                    channel=event["channel"],
+                                )
+                            )
                             total_notes += 1
-                        elif event['type'] == 'note_off':
-                            track.append(mido.Message('note_off',
-                                                    note=event['note'],
-                                                    velocity=0,
-                                                    time=delta,
-                                                    channel=event['channel']))
-                        elif event['type'] == 'cc':
-                            track.append(mido.Message('control_change',
-                                                    control=event['cc'],
-                                                    value=event['value'],
-                                                    time=delta,
-                                                    channel=event['channel']))
-                        elif event['type'] == 'nrpn':
+                        elif event["type"] == "note_off":
+                            track.append(
+                                mido.Message(
+                                    "note_off", note=event["note"], velocity=0, time=delta, channel=event["channel"]
+                                )
+                            )
+                        elif event["type"] == "cc":
+                            track.append(
+                                mido.Message(
+                                    "control_change",
+                                    control=event["cc"],
+                                    value=event["value"],
+                                    time=delta,
+                                    channel=event["channel"],
+                                )
+                            )
+                        elif event["type"] == "nrpn":
                             # NRPN requires 4 CC messages
-                            track.append(mido.Message('control_change', control=99, value=event['msb'], time=delta, channel=event['channel']))
-                            track.append(mido.Message('control_change', control=98, value=event['lsb'], time=0, channel=event['channel']))
-                            track.append(mido.Message('control_change', control=6, value=event['value'], time=0, channel=event['channel']))
-                            track.append(mido.Message('control_change', control=38, value=0, time=0, channel=event['channel']))
+                            track.append(
+                                mido.Message(
+                                    "control_change",
+                                    control=99,
+                                    value=event["msb"],
+                                    time=delta,
+                                    channel=event["channel"],
+                                )
+                            )
+                            track.append(
+                                mido.Message(
+                                    "control_change", control=98, value=event["lsb"], time=0, channel=event["channel"]
+                                )
+                            )
+                            track.append(
+                                mido.Message(
+                                    "control_change", control=6, value=event["value"], time=0, channel=event["channel"]
+                                )
+                            )
+                            track.append(
+                                mido.Message("control_change", control=38, value=0, time=0, channel=event["channel"])
+                            )
 
                         current_tick = event_tick
 
                     # End track
-                    track.append(mido.MetaMessage('end_of_track', time=0))
+                    track.append(mido.MetaMessage("end_of_track", time=0))
 
                 # Save file
                 mid.save(filepath)
 
-                param_count = sum(len(events) for events in parameter_automation.values()) if parameter_automation else 0
+                param_count = (
+                    sum(len(events) for events in parameter_automation.values()) if parameter_automation else 0
+                )
                 param_info = f", {param_count} parameter automation events" if param_count > 0 else ""
-                return [TextContent(
-                    type="text",
-                    text=f"Saved pattern to {filepath}\n{bars} bars at {bpm} BPM\n{len(track_events)} tracks, {total_notes} notes{param_info}"
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Saved pattern to {filepath}\n{bars} bars at {bpm} BPM\n{len(track_events)} tracks, {total_notes} notes{param_info}",
+                    )
+                ]
 
             except Exception as e:
-                return [TextContent(
-                    type="text",
-                    text=f"Error saving pattern: {str(e)}"
-                )]
+                return [TextContent(type="text", text=f"Error saving pattern: {str(e)}")]
 
         elif name == "export_pattern_to_midi":
             filename = arguments.get("filename")
@@ -3941,8 +3835,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             melody_channel = arguments.get("melody_channel", 1)
 
             try:
-                if not filename.endswith('.mid'):
-                    filename += '.mid'
+                if not filename.endswith(".mid"):
+                    filename += ".mid"
 
                 # Create MIDI file
                 mid = mido.MidiFile()
@@ -3950,8 +3844,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 # Tempo track
                 tempo_track = mido.MidiTrack()
                 mid.tracks.append(tempo_track)
-                tempo_track.append(mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(bpm)))
-                tempo_track.append(mido.MetaMessage('time_signature', numerator=4, denominator=4))
+                tempo_track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(bpm)))
+                tempo_track.append(mido.MetaMessage("time_signature", numerator=4, denominator=4))
 
                 # Convert beat duration to ticks (480 ticks per beat is standard)
                 ticks_per_beat = mid.ticks_per_beat
@@ -3960,7 +3854,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 if track_triggers:
                     drum_track = mido.MidiTrack()
                     mid.tracks.append(drum_track)
-                    drum_track.append(mido.MetaMessage('track_name', name='Digitakt Drums'))
+                    drum_track.append(mido.MetaMessage("track_name", name="Digitakt Drums"))
 
                     # Sort by beat time
                     sorted_triggers = sorted(track_triggers, key=lambda x: x[0])
@@ -3982,21 +3876,25 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         delta_time = tick - current_tick
 
                         # Note on
-                        drum_track.append(mido.Message('note_on', channel=0, note=note, velocity=velocity, time=delta_time))
+                        drum_track.append(
+                            mido.Message("note_on", channel=0, note=note, velocity=velocity, time=delta_time)
+                        )
                         # Note off (100ms later)
                         note_off_ticks = int(0.1 * ticks_per_beat * bpm / 60)
-                        drum_track.append(mido.Message('note_off', channel=0, note=note, velocity=0, time=note_off_ticks))
+                        drum_track.append(
+                            mido.Message("note_off", channel=0, note=note, velocity=0, time=note_off_ticks)
+                        )
 
                         current_tick = tick + note_off_ticks
 
                     # End of track
-                    drum_track.append(mido.MetaMessage('end_of_track', time=0))
+                    drum_track.append(mido.MetaMessage("end_of_track", time=0))
 
                 # Track 2: Melody/chords
                 if melody_notes:
                     melody_track = mido.MidiTrack()
                     mid.tracks.append(melody_track)
-                    melody_track.append(mido.MetaMessage('track_name', name=f'Melody Ch{melody_channel}'))
+                    melody_track.append(mido.MetaMessage("track_name", name=f"Melody Ch{melody_channel}"))
 
                     # Sort by beat time
                     sorted_notes = sorted(melody_notes, key=lambda x: x[0])
@@ -4014,29 +3912,36 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         duration_ticks = int(duration * ticks_per_beat * bpm / 60)
 
                         # Note on
-                        melody_track.append(mido.Message('note_on', channel=melody_channel-1, note=note, velocity=velocity, time=delta_time))
+                        melody_track.append(
+                            mido.Message(
+                                "note_on", channel=melody_channel - 1, note=note, velocity=velocity, time=delta_time
+                            )
+                        )
                         # Note off
-                        melody_track.append(mido.Message('note_off', channel=melody_channel-1, note=note, velocity=0, time=duration_ticks))
+                        melody_track.append(
+                            mido.Message(
+                                "note_off", channel=melody_channel - 1, note=note, velocity=0, time=duration_ticks
+                            )
+                        )
 
                         current_tick = tick + duration_ticks
 
                     # End of track
-                    melody_track.append(mido.MetaMessage('end_of_track', time=0))
+                    melody_track.append(mido.MetaMessage("end_of_track", time=0))
 
                 # Save file
                 mid.save(filename)
 
                 track_count = (1 if track_triggers else 0) + (1 if melody_notes else 0)
-                return [TextContent(
-                    type="text",
-                    text=f"Exported pattern to {filename}\n{bars} bars at {bpm} BPM\n{len(track_triggers)} drum triggers, {len(melody_notes)} melody notes\n{track_count} MIDI tracks created"
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Exported pattern to {filename}\n{bars} bars at {bpm} BPM\n{len(track_triggers)} drum triggers, {len(melody_notes)} melody notes\n{track_count} MIDI tracks created",
+                    )
+                ]
 
             except Exception as e:
-                return [TextContent(
-                    type="text",
-                    text=f"Error exporting MIDI: {str(e)}"
-                )]
+                return [TextContent(type="text", text=f"Error exporting MIDI: {str(e)}")]
 
         elif name == "list_parameters":
             category_filter = arguments.get("category")
@@ -4061,7 +3966,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     result += "\n"
 
                 result += f"Total: {len(get_all_parameters())} parameters\n"
-                result += f"\nUse 'category' parameter to filter by category."
+                result += "\nUse 'category' parameter to filter by category."
 
             return [TextContent(type="text", text=result)]
 
@@ -4073,14 +3978,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             stop_on_silence = arguments.get("stop_on_silence", 0)
 
             if not input_port:
-                return [TextContent(
-                    type="text",
-                    text="Error: Not connected to Digitakt MIDI input port"
-                )]
+                return [TextContent(type="text", text="Error: Not connected to Digitakt MIDI input port")]
 
             # Ensure filename has .mid extension
-            if not filename.endswith('.mid'):
-                filename += '.mid'
+            if not filename.endswith(".mid"):
+                filename += ".mid"
 
             filepath = RECORDINGS_DIR / filename
 
@@ -4094,8 +3996,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             mid.tracks.append(tempo_track)
             tempo_track.name = "Tempo"
             # Set tempo (microseconds per beat)
-            tempo_track.append(mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(bpm), time=0))
-            tempo_track.append(mido.MetaMessage('end_of_track', time=0))
+            tempo_track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(bpm), time=0))
+            tempo_track.append(mido.MetaMessage("end_of_track", time=0))
 
             # Add recording track
             track = mido.MidiTrack()
@@ -4103,6 +4005,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             track.name = "Digitakt Recording"
 
             import time
+
             start_time = time.time()
             last_msg_time = start_time
             last_tick = 0
@@ -4124,11 +4027,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     last_msg_time = now
 
                     # Filter clock if requested
-                    if filter_clock and msg.type == 'clock':
+                    if filter_clock and msg.type == "clock":
                         continue
 
                     # Skip sysex and meta messages for now
-                    if msg.type in ('sysex', 'quarter_frame', 'songpos', 'song_select', 'tune_request'):
+                    if msg.type in ("sysex", "quarter_frame", "songpos", "song_select", "tune_request"):
                         continue
 
                     # Calculate tick position
@@ -4137,9 +4040,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     last_tick = current_tick
 
                     # Log what we're recording
-                    if msg.type == 'note_on':
+                    if msg.type == "note_on":
                         log_note_on(msg.note, msg.velocity, msg.channel)
-                    elif msg.type == 'control_change':
+                    elif msg.type == "control_change":
                         log_cc(msg.control, msg.value, msg.channel)
 
                     # Add message to track with delta time
@@ -4154,7 +4057,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 await asyncio.sleep(0.001)
 
             # End the track
-            track.append(mido.MetaMessage('end_of_track', time=0))
+            track.append(mido.MetaMessage("end_of_track", time=0))
 
             # Save the file
             mid.save(str(filepath))
@@ -4162,12 +4065,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             elapsed = time.time() - start_time
             logger.info(f"⏹️  RECORDED {msg_count} messages in {elapsed:.1f}s -> {filename}")
 
-            return [TextContent(
-                type="text",
-                text=f"Recorded {msg_count} MIDI messages in {elapsed:.1f}s\n" +
-                     f"Saved to: {filepath}\n\n" +
-                     f"Use play_midi_file to play it back!"
-            )]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Recorded {msg_count} MIDI messages in {elapsed:.1f}s\n"
+                    + f"Saved to: {filepath}\n\n"
+                    + "Use play_midi_file to play it back!",
+                )
+            ]
 
         elif name == "play_midi_file":
             filename = arguments["filename"]
@@ -4184,11 +4089,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     filepath = RECORDINGS_DIR / (filename + ".mid")
 
             if not filepath.exists():
-                return [TextContent(
-                    type="text",
-                    text=f"Error: MIDI file not found: {filename}\n" +
-                         f"Searched in: {RECORDINGS_DIR}"
-                )]
+                return [
+                    TextContent(
+                        type="text", text=f"Error: MIDI file not found: {filename}\n" + f"Searched in: {RECORDINGS_DIR}"
+                    )
+                ]
 
             logger.info(f"▶️  PLAYING {filepath.name} (tempo scale: {tempo_scale}x)")
 
@@ -4197,7 +4102,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             # Send transport start if requested
             if send_transport:
-                output_port.send(mido.Message('start'))
+                output_port.send(mido.Message("start"))
                 log_transport("START")
 
             msg_count = 0
@@ -4206,7 +4111,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             # Play the file
             for msg in mid.play():
                 # Apply tempo scaling to sleep time
-                if hasattr(msg, 'time') and msg.time > 0:
+                if hasattr(msg, "time") and msg.time > 0:
                     await asyncio.sleep(msg.time / tempo_scale)
 
                 # Skip meta messages
@@ -4218,32 +4123,31 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 msg_count += 1
 
                 # Log what we're playing
-                if msg.type == 'note_on':
+                if msg.type == "note_on":
                     log_note_on(msg.note, msg.velocity, msg.channel)
-                elif msg.type == 'control_change':
+                elif msg.type == "control_change":
                     log_cc(msg.control, msg.value, msg.channel)
 
             # Send transport stop if requested
             if send_transport:
-                output_port.send(mido.Message('stop'))
+                output_port.send(mido.Message("stop"))
                 log_transport("STOP")
 
             logger.info(f"⏹️  FINISHED playing {msg_count} messages")
 
-            return [TextContent(
-                type="text",
-                text=f"Played {msg_count} MIDI messages from {filepath.name}"
-            )]
+            return [TextContent(type="text", text=f"Played {msg_count} MIDI messages from {filepath.name}")]
 
         elif name == "list_midi_recordings":
             recordings = list(RECORDINGS_DIR.glob("*.mid"))
 
             if not recordings:
-                return [TextContent(
-                    type="text",
-                    text=f"No recordings found in {RECORDINGS_DIR}\n\n" +
-                         "Use record_midi_input to create a recording!"
-                )]
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"No recordings found in {RECORDINGS_DIR}\n\n"
+                        + "Use record_midi_input to create a recording!",
+                    )
+                ]
 
             result = f"MIDI Recordings ({len(recordings)} files):\n"
             result += f"Location: {RECORDINGS_DIR}\n\n"
@@ -4252,7 +4156,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 # Get file info
                 stat = filepath.stat()
                 size_kb = stat.st_size / 1024
-                mtime = time.strftime('%Y-%m-%d %H:%M', time.localtime(stat.st_mtime))
+                mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
 
                 # Try to get duration from MIDI file
                 try:
@@ -4272,14 +4176,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             filter_clock = arguments.get("filter_clock", True)
 
             if not input_port:
-                return [TextContent(
-                    type="text",
-                    text="Error: Not connected to Digitakt MIDI input port"
-                )]
+                return [TextContent(type="text", text="Error: Not connected to Digitakt MIDI input port")]
 
             logger.info(f"👂 MONITORING MIDI INPUT for {duration_sec}s...")
 
             import time
+
             start_time = time.time()
             messages = []
 
@@ -4294,44 +4196,44 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                     elapsed = time.time() - start_time
 
                     # Filter out clock if requested
-                    if filter_clock and msg.type == 'clock':
+                    if filter_clock and msg.type == "clock":
                         continue
 
                     # Format message for display
-                    if msg.type == 'note_on':
+                    if msg.type == "note_on":
                         if msg.note < 8:
-                            msg_str = f"🥁 NOTE ON  Track {msg.note+1} vel={msg.velocity} ch={msg.channel+1}"
+                            msg_str = f"🥁 NOTE ON  Track {msg.note + 1} vel={msg.velocity} ch={msg.channel + 1}"
                         else:
-                            msg_str = f"🎹 NOTE ON  {note_name(msg.note)} ({msg.note}) vel={msg.velocity} ch={msg.channel+1}"
+                            msg_str = f"🎹 NOTE ON  {note_name(msg.note)} ({msg.note}) vel={msg.velocity} ch={msg.channel + 1}"
                         logger.info(msg_str)
-                    elif msg.type == 'note_off':
+                    elif msg.type == "note_off":
                         if msg.note < 8:
-                            msg_str = f"   NOTE OFF Track {msg.note+1} ch={msg.channel+1}"
+                            msg_str = f"   NOTE OFF Track {msg.note + 1} ch={msg.channel + 1}"
                         else:
-                            msg_str = f"   NOTE OFF {note_name(msg.note)} ({msg.note}) ch={msg.channel+1}"
+                            msg_str = f"   NOTE OFF {note_name(msg.note)} ({msg.note}) ch={msg.channel + 1}"
                         logger.debug(msg_str)
-                    elif msg.type == 'control_change':
-                        msg_str = f"🎛️  CC {msg.control:3d} = {msg.value:3d}  ch={msg.channel+1}"
+                    elif msg.type == "control_change":
+                        msg_str = f"🎛️  CC {msg.control:3d} = {msg.value:3d}  ch={msg.channel + 1}"
                         logger.info(msg_str)
-                    elif msg.type == 'program_change':
-                        msg_str = f"📀 PROGRAM CHANGE: {msg.program}  ch={msg.channel+1}"
+                    elif msg.type == "program_change":
+                        msg_str = f"📀 PROGRAM CHANGE: {msg.program}  ch={msg.channel + 1}"
                         logger.info(msg_str)
-                    elif msg.type == 'start':
+                    elif msg.type == "start":
                         msg_str = "🚀 TRANSPORT: START"
                         logger.info(msg_str)
-                    elif msg.type == 'stop':
+                    elif msg.type == "stop":
                         msg_str = "🚀 TRANSPORT: STOP"
                         logger.info(msg_str)
-                    elif msg.type == 'continue':
+                    elif msg.type == "continue":
                         msg_str = "🚀 TRANSPORT: CONTINUE"
                         logger.info(msg_str)
-                    elif msg.type == 'songpos':
+                    elif msg.type == "songpos":
                         msg_str = f"📍 SONG POSITION: {msg.pos}"
                         logger.info(msg_str)
-                    elif msg.type == 'clock':
+                    elif msg.type == "clock":
                         msg_str = "⏱️  CLOCK"
                         # Don't log clock - too frequent
-                    elif msg.type == 'sysex':
+                    elif msg.type == "sysex":
                         msg_str = f"📦 SYSEX: {len(msg.data)} bytes"
                         logger.info(msg_str)
                     else:
@@ -4362,17 +4264,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return [TextContent(type="text", text=result)]
 
         else:
-            return [TextContent(
-                type="text",
-                text=f"Unknown tool: {name}"
-            )]
+            return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     except Exception as e:
         logger.error(f"Error executing tool {name}: {e}")
-        return [TextContent(
-            type="text",
-            text=f"Error: {str(e)}"
-        )]
+        return [TextContent(type="text", text=f"Error: {str(e)}")]
+
 
 @server.list_resources()
 async def list_resources() -> list[Resource]:
@@ -4382,25 +4279,24 @@ async def list_resources() -> list[Resource]:
             uri="midi://ports",
             name="MIDI Ports",
             mimeType="application/json",
-            description="List all available MIDI input and output ports"
+            description="List all available MIDI input and output ports",
         ),
         Resource(
             uri="midi://digitakt/status",
             name="Digitakt Connection Status",
             mimeType="text/plain",
-            description="Current connection status to Digitakt MIDI ports"
-        )
+            description="Current connection status to Digitakt MIDI ports",
+        ),
     ]
+
 
 @server.read_resource()
 async def read_resource(uri: str) -> str:
     """Read a resource"""
     if uri == "midi://ports":
         import json
-        ports = {
-            "inputs": mido.get_input_names(),
-            "outputs": mido.get_output_names()
-        }
+
+        ports = {"inputs": mido.get_input_names(), "outputs": mido.get_output_names()}
         return json.dumps(ports, indent=2)
 
     elif uri == "midi://digitakt/status":
@@ -4418,6 +4314,7 @@ async def read_resource(uri: str) -> str:
 
     return f"Unknown resource: {uri}"
 
+
 async def main():
     """Main entry point"""
     # Connect to MIDI first
@@ -4425,11 +4322,8 @@ async def main():
 
     # Run the server
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options()
-        )
+        await server.run(read_stream, write_stream, server.create_initialization_options())
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -15,11 +15,14 @@ def main():
     if os.environ.get("DIGITAKT_USE_LEGACY") == "1":
         # Use original server implementation
         import asyncio
+
         from server import main as server_main
+
         asyncio.run(server_main())
     else:
         # Use FastMCP implementation (default)
         from server_fastmcp import main as fastmcp_main
+
         fastmcp_main()
 
 

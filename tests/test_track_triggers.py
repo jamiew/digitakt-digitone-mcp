@@ -4,8 +4,10 @@ Test script to verify track triggering on Digitakt II
 Sends MIDI notes 0-7 to trigger tracks 1-8
 """
 
-import mido
 import time
+
+import mido
+
 
 def test_track_triggers():
     """Test triggering each track individually"""
@@ -34,13 +36,13 @@ def test_track_triggers():
             print(f"Triggering Track {track:2d} (MIDI note {note:2d})...")
 
             # Send note on
-            note_on = mido.Message('note_on', note=note, velocity=100)
+            note_on = mido.Message("note_on", note=note, velocity=100)
             output_port.send(note_on)
 
             time.sleep(0.05)
 
             # Send note off
-            note_off = mido.Message('note_off', note=note)
+            note_off = mido.Message("note_off", note=note)
             output_port.send(note_off)
 
             time.sleep(0.3)  # Wait between triggers
@@ -61,6 +63,7 @@ def test_track_triggers():
     finally:
         output_port.close()
         print("\nMIDI port closed.")
+
 
 if __name__ == "__main__":
     print("Digitakt II Track Trigger Test")

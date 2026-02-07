@@ -5,8 +5,9 @@ Tests playing count-in without MIDI Start, then starting transport at specific b
 """
 
 import asyncio
-import mido
 import time
+
+import mido
 
 # Find Digitakt output port
 output_port = None
@@ -20,18 +21,20 @@ if not output_port:
     print("✗ Could not find Digitakt MIDI output port")
     exit(1)
 
+
 # Helper function for delayed note off
 async def _delayed_note_off(note: int, duration: float, channel: int = 0):
     """Send note off after a delay"""
     await asyncio.sleep(duration)
     if output_port:
-        output_port.send(mido.Message('note_off', note=note, velocity=0, channel=channel))
+        output_port.send(mido.Message("note_off", note=note, velocity=0, channel=channel))
+
 
 async def test_delayed_start():
     """Test delayed MIDI Start - count-in then start transport"""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TEST: Delayed MIDI Start")
-    print("="*70)
+    print("=" * 70)
     print("Workflow:")
     print("  1. Bars 1-4 (beats 0-15): Count-in clicks on track 15")
     print("     - NO MIDI Start sent")
@@ -59,14 +62,38 @@ async def test_delayed_start():
     melody_notes = []
     melody_beats = [
         # Simple repeating 4-note pattern
-        60, 64, 67, 64,  # Bar 5
-        60, 64, 67, 64,  # Bar 6
-        62, 65, 69, 65,  # Bar 7
-        62, 65, 69, 65,  # Bar 8
-        64, 67, 71, 67,  # Bar 9
-        64, 67, 71, 67,  # Bar 10
-        65, 69, 72, 69,  # Bar 11
-        60, 64, 67, 72,  # Bar 12 (ending)
+        60,
+        64,
+        67,
+        64,  # Bar 5
+        60,
+        64,
+        67,
+        64,  # Bar 6
+        62,
+        65,
+        69,
+        65,  # Bar 7
+        62,
+        65,
+        69,
+        65,  # Bar 8
+        64,
+        67,
+        71,
+        67,  # Bar 9
+        64,
+        67,
+        71,
+        67,  # Bar 10
+        65,
+        69,
+        72,
+        69,  # Bar 11
+        60,
+        64,
+        67,
+        72,  # Bar 12 (ending)
     ]
     for i, midi_note in enumerate(melody_beats):
         beat = 16 + i  # Start at beat 16
@@ -123,19 +150,19 @@ async def test_delayed_start():
             if midi_start_at_beat > 0:
                 spp_position = int(midi_start_at_beat * 4)
                 print(f">>> SONG POSITION POINTER set to {spp_position} (beat {midi_start_at_beat})")
-                output_port.send(mido.Message('songpos', pos=spp_position))
-            print(f">>> MIDI START sent at pulse {i} (beat {i/24:.1f})")
-            output_port.send(mido.Message('start'))
+                output_port.send(mido.Message("songpos", pos=spp_position))
+            print(f">>> MIDI START sent at pulse {i} (beat {i / 24:.1f})")
+            output_port.send(mido.Message("start"))
             midi_started = True
 
         # Send MIDI Clock only if we've started
         if midi_started:
-            output_port.send(mido.Message('clock'))
+            output_port.send(mido.Message("clock"))
 
         # Check if we need to send any events at this pulse
         while event_idx < len(event_schedule) and event_schedule[event_idx][1] == i:
             event_type, pulse, note, velocity, duration, ch = event_schedule[event_idx]
-            output_port.send(mido.Message('note_on', note=note, velocity=velocity, channel=ch))
+            output_port.send(mido.Message("note_on", note=note, velocity=velocity, channel=ch))
             asyncio.create_task(_delayed_note_off(note, duration, ch))
 
             if midi_started:
@@ -153,8 +180,8 @@ async def test_delayed_start():
             await asyncio.sleep(sleep_duration)
 
     # Send Stop
-    output_port.send(mido.Message('stop'))
-    print(f">>> MIDI STOP sent")
+    output_port.send(mido.Message("stop"))
+    print(">>> MIDI STOP sent")
     print()
 
     print("✓ Playback complete!")
@@ -163,10 +190,11 @@ async def test_delayed_start():
     print(f"  - Total events: {pre_start_notes + post_start_notes}")
     print()
 
+
 async def main():
     """Run the test"""
     print("Digitakt II Delayed MIDI Start Test")
-    print("="*70)
+    print("=" * 70)
     print("SETUP INSTRUCTIONS:")
     print("  1. Load a sample on track 15 (for count-in clicks)")
     print("  2. Set active track to a melodic sample")
@@ -185,9 +213,9 @@ async def main():
 
     await test_delayed_start()
 
-    print("="*70)
+    print("=" * 70)
     print("TEST VALIDATION:")
-    print("="*70)
+    print("=" * 70)
     print("Did you observe:")
     print("  ✓ Count-in clicks played WITHOUT starting Digitakt sequencer?")
     print("  ✓ Digitakt sequencer started at bar 5 (after count-in)?")
@@ -196,6 +224,7 @@ async def main():
     print()
 
     output_port.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

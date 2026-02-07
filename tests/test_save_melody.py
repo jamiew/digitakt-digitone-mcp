@@ -9,17 +9,18 @@ import mido
 test_melody = {
     "bpm": 120,
     "notes": [
-        [0, 60, 100, 0.2],    # C
-        [1, 62, 100, 0.2],    # D
-        [2, 64, 100, 0.2],    # E
-        [3, 65, 100, 0.2],    # F
-        [4, 67, 100, 0.2],    # G
-        [5, 65, 100, 0.2],    # F
-        [6, 64, 100, 0.2],    # E
-        [7, 60, 100, 0.4],    # C
+        [0, 60, 100, 0.2],  # C
+        [1, 62, 100, 0.2],  # D
+        [2, 64, 100, 0.2],  # E
+        [3, 65, 100, 0.2],  # F
+        [4, 67, 100, 0.2],  # G
+        [5, 65, 100, 0.2],  # F
+        [6, 64, 100, 0.2],  # E
+        [7, 60, 100, 0.4],  # C
     ],
-    "channel": 1
+    "channel": 1,
 }
+
 
 def save_melody_to_midi(melody, filename):
     """Save a melody to a MIDI file"""
@@ -31,7 +32,7 @@ def save_melody_to_midi(melody, filename):
     # Set tempo
     bpm = melody["bpm"]
     tempo = mido.bpm2tempo(bpm)
-    track.append(mido.MetaMessage('set_tempo', tempo=tempo, time=0))
+    track.append(mido.MetaMessage("set_tempo", tempo=tempo, time=0))
 
     # Add notes
     notes = melody["notes"]
@@ -61,18 +62,19 @@ def save_melody_to_midi(melody, filename):
         delta_time = tick_time - current_time
 
         if event_type == "on":
-            track.append(mido.Message('note_on', note=note, velocity=velocity, channel=ch, time=delta_time))
+            track.append(mido.Message("note_on", note=note, velocity=velocity, channel=ch, time=delta_time))
         else:
-            track.append(mido.Message('note_off', note=note, velocity=velocity, channel=ch, time=delta_time))
+            track.append(mido.Message("note_off", note=note, velocity=velocity, channel=ch, time=delta_time))
 
         current_time = tick_time
 
     # Add end of track
-    track.append(mido.MetaMessage('end_of_track', time=0))
+    track.append(mido.MetaMessage("end_of_track", time=0))
 
     # Save to file
     mid.save(filename)
     return True
+
 
 def test_save_melody():
     """Test saving a melody to MIDI file"""
@@ -91,17 +93,17 @@ def test_save_melody():
 
         # Verify by reading it back
         mid = mido.MidiFile(filename)
-        print(f"\nVerifying MIDI file:")
+        print("\nVerifying MIDI file:")
         print(f"  Ticks per beat: {mid.ticks_per_beat}")
         print(f"  Number of tracks: {len(mid.tracks)}")
 
         note_count = 0
         for msg in mid.tracks[0]:
-            if msg.type == 'note_on' and msg.velocity > 0:
+            if msg.type == "note_on" and msg.velocity > 0:
                 note_count += 1
         print(f"  Note on messages: {note_count}")
 
-        if note_count == len(test_melody['notes']):
+        if note_count == len(test_melody["notes"]):
             print(f"\n✓ Test PASSED - All {note_count} notes saved correctly")
         else:
             print(f"\n✗ Test FAILED - Expected {len(test_melody['notes'])} notes, found {note_count}")
@@ -111,6 +113,7 @@ def test_save_melody():
         return False
 
     return True
+
 
 if __name__ == "__main__":
     test_save_melody()
