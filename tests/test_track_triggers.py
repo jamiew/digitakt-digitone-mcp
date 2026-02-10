@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to verify track triggering on Digitakt II
+Test script to verify track triggering on Digitakt
 Sends MIDI notes 0-7 to trigger tracks 1-8
 """
 
@@ -15,7 +15,7 @@ def test_track_triggers():
     # Find Digitakt output port
     output_port = None
     for port_name in mido.get_output_names():
-        if "Elektron Digitakt II" in port_name:
+        if "Elektron Digitakt" in port_name:
             output_port = mido.open_output(port_name)
             print(f"✓ Connected to MIDI output: {port_name}")
             break
@@ -25,15 +25,15 @@ def test_track_triggers():
         return False
 
     try:
-        print("\nTesting track triggers (MIDI notes 0-15)...")
-        print("Make sure your Digitakt II has samples loaded on tracks 1-16!")
+        print("\nTesting track triggers (MIDI notes 0-7)...")
+        print("Make sure your Digitakt has samples loaded on tracks 1-8!")
         print()
 
-        # Test each track
-        for track in range(1, 17):
+        # Test each track (Digitakt 1 has 8 audio tracks)
+        for track in range(1, 9):
             note = track - 1  # Track 1 = note 0, Track 2 = note 1, etc.
 
-            print(f"Triggering Track {track:2d} (MIDI note {note:2d})...")
+            print(f"Triggering Track {track} (MIDI note {note})...")
 
             # Send note on
             note_on = mido.Message("note_on", note=note, velocity=100)
@@ -48,11 +48,11 @@ def test_track_triggers():
             time.sleep(0.3)  # Wait between triggers
 
         print("\n✓ Test complete!")
-        print("\nDid you hear all 16 tracks trigger?")
+        print("\nDid you hear all 8 tracks trigger?")
         print("If not, check:")
-        print("  - Tracks have samples loaded (or MIDI devices connected for MIDI tracks)")
+        print("  - Tracks have samples loaded")
         print("  - Track MIDI channels are set correctly (or use AUTO CHANNEL)")
-        print("  - Digitakt II volume is up")
+        print("  - Digitakt volume is up")
 
         return True
 
@@ -66,6 +66,6 @@ def test_track_triggers():
 
 
 if __name__ == "__main__":
-    print("Digitakt II Track Trigger Test")
+    print("Digitakt Track Trigger Test")
     print("=" * 60)
     test_track_triggers()

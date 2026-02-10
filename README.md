@@ -13,32 +13,25 @@ An MCP (Model Context Protocol) server for controlling the Elektron Digitakt (or
 
 ```
 digitakt-midi-mcp/
-├── pyproject.toml         # Project config (uv/pip)
-├── server.py              # Main MCP server
-├── digitakt_midi.py       # Entry point wrapper
-├── nrpn_constants.py      # MIDI CC and NRPN mappings
-├── parameter_map.py       # Parameter automation mapping
-├── tests/                 # Test scripts
-│   ├── test_midi.py
-│   ├── test_track_triggers.py
-│   ├── test_transport.py
-│   ├── test_pattern_tools.py
-│   ├── test_save_melody.py
-│   ├── test_tracks_and_melody.py
-│   └── verify_cc_mappings.py
-└── analysis/              # Research and analysis tools
-    └── analyze_sysex.py
+├── pyproject.toml         # Project config (uv)
+├── server_fastmcp.py      # FastMCP server (44 tools)
+├── digitakt_midi.py       # Entry point
+├── nrpn_constants.py      # MIDI NRPN mappings
+├── parameter_map.py       # Named parameter → CC/NRPN mapping
+├── tests/                 # Unit + hardware tests
+└── PLAN.md                # TODO list and architecture
 ```
 
 ## Features
 
-- **Send MIDI Notes**: Trigger drum sounds on specific tracks (1-8)
-- **Control Parameters**: Adjust filters, envelopes, and other parameters via CC messages
-- **Program Changes**: Switch between patterns
-- **Note Sequences**: Send rhythmic patterns programmatically
-- **NRPN Support**: Advanced parameter control including per-trig note, velocity, and length
-- **Transport Control**: Start/Stop/Continue sequencer playback and jump to positions
-- **SysEx Support**: Send raw SysEx messages for advanced control and pattern programming
+- **MIDI Notes**: Trigger tracks (1-8), play melodies, sequences
+- **Parameter Control**: Named parameters via `set_parameter` (filter, amp, LFO, FX)
+- **Transport**: Start/stop/continue, song position, MIDI clock sync
+- **Pattern Playback**: Multi-track triggers, melodies, loops with clock
+- **Automation**: Parameter sweeps, ADSR envelopes, real-time modulation
+- **Pattern Storage**: Save/load patterns and automation presets to JSON
+- **MIDI Export**: Export patterns and melodies to .mid files
+- **MIDI Recording**: Monitor and record incoming MIDI to .mid files
 
 ## Installation
 
@@ -97,11 +90,6 @@ The MCP server sends track triggers on per-track MIDI channels (Track 1 on Chann
 
 ```bash
 uv run digitakt-midi
-```
-
-Or run directly:
-```bash
-uv run python server.py
 ```
 
 ### Configuring with Claude Desktop
@@ -375,24 +363,17 @@ NRPNs provide access to more parameters than standard CCs. See `nrpn_constants.p
 - **MSB 2**: FX (Delay and Reverb) parameters
 - **MSB 3**: Trig parameters (Note, Velocity, Length)
 
-## Testing and Development
-
-### Running Tests
-
-Test scripts are located in the `tests/` directory. All tests require the Digitakt to be connected via USB.
+## Testing
 
 ```bash
-# Verify MIDI CC and NRPN mappings
-uv run python tests/verify_cc_mappings.py
+# Unit tests (no hardware needed)
+uv run pytest tests/test_fastmcp_migration.py -v
 
-# Test basic MIDI connectivity
-uv run python tests/test_midi.py
+# All tests (requires connected Digitakt)
+uv run pytest
 
-# Test track triggering (notes 0-7 for tracks 1-8)
-uv run python tests/test_track_triggers.py
-
-# Test transport control (Start/Stop/Continue)
-uv run python tests/test_transport.py
+# Lint and format check
+uv run ruff check . && uv run ruff format --check .
 ```
 
 ## Troubleshooting

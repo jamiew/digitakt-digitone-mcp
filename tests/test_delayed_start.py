@@ -12,7 +12,7 @@ import mido
 # Find Digitakt output port
 output_port = None
 for port_name in mido.get_output_names():
-    if "Elektron Digitakt II" in port_name:
+    if "Elektron Digitakt" in port_name:
         output_port = mido.open_output(port_name)
         print(f"✓ Connected to MIDI output: {port_name}")
         break
@@ -193,10 +193,10 @@ async def test_delayed_start():
 
 async def main():
     """Run the test"""
-    print("Digitakt II Delayed MIDI Start Test")
+    print("Digitakt Delayed MIDI Start Test")
     print("=" * 70)
     print("SETUP INSTRUCTIONS:")
-    print("  1. Load a sample on track 15 (for count-in clicks)")
+    print("  1. Load a sample on track 8 (for count-in clicks)")
     print("  2. Set active track to a melodic sample")
     print("  3. Enable TRANSPORT RECEIVE in MIDI settings")
     print("  4. Enable CLOCK RECEIVE in MIDI settings")
