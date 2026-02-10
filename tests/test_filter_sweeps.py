@@ -132,7 +132,7 @@ async def main():
     print("DIGITAKT FILTER SWEEP TEST SUITE")
     print("=" * 60)
     print("\nMake sure:")
-    print("1. Digitakt II is connected via USB")
+    print("1. Digitakt is connected via USB")
     print("2. Digitakt is set to receive MIDI CC on channel 1")
     print("3. A pattern is loaded with a sound that responds to filter")
     print("4. You can hear the output")

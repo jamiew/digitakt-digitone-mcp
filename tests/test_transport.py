@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to verify MIDI transport controls on Digitakt II
+Test script to verify MIDI transport controls on Digitakt
 Tests Start, Stop, Continue, and Song Position messages
 """
 
@@ -15,7 +15,7 @@ def test_transport_controls():
     # Find Digitakt output port
     output_port = None
     for port_name in mido.get_output_names():
-        if "Elektron Digitakt II" in port_name:
+        if "Elektron Digitakt" in port_name:
             output_port = mido.open_output(port_name)
             print(f"✓ Connected to MIDI output: {port_name}")
             break
@@ -89,6 +89,6 @@ def test_transport_controls():
 
 
 if __name__ == "__main__":
-    print("Digitakt II MIDI Transport Control Test")
+    print("Digitakt MIDI Transport Control Test")
     print("=" * 60)
     test_transport_controls()

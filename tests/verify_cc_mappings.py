@@ -20,7 +20,7 @@ from nrpn_constants import (
     TrigParams,
 )
 
-print("Digitakt II MIDI CC and NRPN Mapping Verification")
+print("Digitakt MIDI CC and NRPN Mapping Verification")
 print("=" * 70)
 
 # Check for CC conflicts

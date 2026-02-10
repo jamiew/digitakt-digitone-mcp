@@ -12,7 +12,7 @@ import mido
 # Find Digitakt output port
 output_port = None
 for port_name in mido.get_output_names():
-    if "Elektron Digitakt II" in port_name:
+    if "Elektron Digitakt" in port_name:
         output_port = mido.open_output(port_name)
         print(f"✓ Connected to MIDI output: {port_name}")
         break
@@ -223,9 +223,9 @@ async def test_pattern_with_loop():
 
 async def main():
     """Run all tests"""
-    print("Digitakt II Pattern + MIDI Tools Test")
+    print("Digitakt Pattern + MIDI Tools Test")
     print("=" * 60)
-    print("Make sure your Digitakt II has:")
+    print("Make sure your Digitakt has:")
     print("  - Samples loaded on tracks 1-3")
     print("  - TRANSPORT RECEIVE enabled")
     print("  - CLOCK RECEIVE enabled")

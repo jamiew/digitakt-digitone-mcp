@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple test script to verify MIDI connectivity with Digitakt II
+Simple test script to verify MIDI connectivity with Digitakt
 """
 
 import time
@@ -14,7 +14,7 @@ def test_digitakt_connection():
     # Find Digitakt output port
     output_port = None
     for port_name in mido.get_output_names():
-        if "Elektron Digitakt II" in port_name:
+        if "Elektron Digitakt" in port_name:
             output_port = mido.open_output(port_name)
             print(f"✓ Connected to MIDI output: {port_name}")
             break
@@ -39,7 +39,7 @@ def test_digitakt_connection():
 
         # Send a simple pattern
         print("\nSending a simple 4-step pattern...")
-        for i in range(4):
+        for _ in range(4):
             note_on = mido.Message("note_on", note=60, velocity=100)
             output_port.send(note_on)
             time.sleep(0.05)
@@ -61,6 +61,6 @@ def test_digitakt_connection():
 
 
 if __name__ == "__main__":
-    print("Digitakt II MIDI Test")
+    print("Digitakt MIDI Test")
     print("=" * 40)
     test_digitakt_connection()
