@@ -216,8 +216,8 @@ wheels = [
 ]
 
 [[package]]
-name = "digitakt-midi-mcp"
-version = "0.1.0"
+name = "elektron-midi-mcp"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
