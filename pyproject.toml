@@ -1,7 +1,7 @@
 [project]
-name = "digitakt-midi-mcp"
-version = "0.1.0"
-description = "MCP Server for controlling Elektron Digitakt (original) via MIDI"
+name = "elektron-midi-mcp"
+version = "0.2.0"
+description = "MCP Servers for controlling Elektron Digitakt and Digitone via MIDI"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 digitakt-midi = "digitakt_midi:main"
+digitone-midi = "digitone_midi:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -53,7 +54,7 @@ ignore = [
 "tests/*" = ["E402"]  # Allow late imports in tests (needed for mocking)
 
 [tool.ruff.lint.isort]
-known-first-party = ["digitakt_midi", "server", "server_fastmcp", "nrpn_constants", "parameter_map"]
+known-first-party = ["digitakt_midi", "digitone_midi", "server", "server_fastmcp", "server_digitone", "nrpn_constants", "nrpn_constants_digitone", "parameter_map", "parameter_map_digitone", "shared"]
 
 [tool.ruff.format]
 quote-style = "double"

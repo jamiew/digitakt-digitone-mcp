@@ -30,6 +30,16 @@ from parameter_map import (
     get_parameter_info,
     get_parameters_by_category,
 )
+from shared import (
+    connect_midi,
+    delayed_note_off,
+    log_cc,
+    log_nrpn,
+    log_program_change,
+    log_sysex,
+    log_transport,
+    note_name,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -64,50 +74,19 @@ last_loop = None
 last_multi_channel_pattern = None
 
 
-def connect_midi():
-    """Connect to Digitakt MIDI ports"""
+def _connect():
+    """Connect to Digitakt MIDI ports using shared helper"""
     global output_port, input_port
-
-    try:
-        # Find and connect to Digitakt output port
-        output_ports = mido.get_output_names()
-        for port_name in output_ports:
-            if DIGITAKT_PORT_NAME in port_name:
-                output_port = mido.open_output(port_name)
-                logger.info(f"Connected to MIDI output: {port_name}")
-                break
-
-        # Find and connect to Digitakt input port
-        input_ports = mido.get_input_names()
-        for port_name in input_ports:
-            if DIGITAKT_PORT_NAME in port_name:
-                input_port = mido.open_input(port_name)
-                logger.info(f"Connected to MIDI input: {port_name}")
-                break
-
-        if not output_port:
-            logger.warning(f"Could not find MIDI output port for {DIGITAKT_PORT_NAME}")
-        if not input_port:
-            logger.warning(f"Could not find MIDI input port for {DIGITAKT_PORT_NAME}")
-
-    except Exception as e:
-        logger.error(f"Error connecting to MIDI: {e}")
+    output_port, input_port = connect_midi(DIGITAKT_PORT_NAME, logger)
 
 
 # ============================================================================
-# MIDI LOGGING HELPERS
+# DEVICE-SPECIFIC LOGGING (Digitakt drum track detection)
 # ============================================================================
-
-
-def note_name(note: int) -> str:
-    """Convert MIDI note number to name (e.g., 60 -> C4)"""
-    names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-    octave = (note // 12) - 1
-    return f"{names[note % 12]}{octave}"
 
 
 def log_note_on(note: int, velocity: int, channel: int):
-    """Log a note on message"""
+    """Log a note on - Digitakt-specific: notes 0-7 are drum track triggers"""
     if note < 8:
         logger.info(f"🥁 NOTE ON  Track {note + 1} vel={velocity} ch={channel + 1}")
     else:
@@ -115,50 +94,10 @@ def log_note_on(note: int, velocity: int, channel: int):
 
 
 def log_note_off(note: int, channel: int):
-    """Log a note off message"""
     if note < 8:
         logger.debug(f"   NOTE OFF Track {note + 1} ch={channel + 1}")
     else:
         logger.debug(f"   NOTE OFF {note_name(note)} ({note}) ch={channel + 1}")
-
-
-def log_cc(cc: int, value: int, channel: int, param_name: str = None):
-    """Log a CC message"""
-    if param_name:
-        logger.info(f"🎛️  CC {cc:3d} = {value:3d}  ch={channel + 1}  ({param_name})")
-    else:
-        logger.info(f"🎛️  CC {cc:3d} = {value:3d}  ch={channel + 1}")
-
-
-def log_nrpn(msb: int, lsb: int, value: int, channel: int, param_name: str = None):
-    """Log an NRPN message"""
-    if param_name:
-        logger.info(f"🎚️  NRPN {msb}:{lsb} = {value:3d}  ch={channel + 1}  ({param_name})")
-    else:
-        logger.info(f"🎚️  NRPN {msb}:{lsb} = {value:3d}  ch={channel + 1}")
-
-
-def log_transport(msg_type: str):
-    """Log a transport message"""
-    logger.info(f"🚀 TRANSPORT: {msg_type}")
-
-
-def log_program_change(program: int, channel: int):
-    """Log a program change"""
-    logger.info(f"📀 PROGRAM CHANGE: {program}  ch={channel + 1}")
-
-
-def log_clock():
-    """Log a clock message (debug level)"""
-    logger.debug("⏱️  CLOCK")
-
-
-def log_sysex(data: list):
-    """Log a SysEx message"""
-    hex_display = " ".join([f"{b:02X}" for b in data[:16]])
-    if len(data) > 16:
-        hex_display += f"... ({len(data)} bytes)"
-    logger.info(f"📡 SYSEX: F0 {hex_display} F7")
 
 
 def check_connection() -> str | None:
@@ -248,7 +187,7 @@ def send_cc(
     ch = channel - 1
     msg = mido.Message("control_change", control=cc_number, value=value, channel=ch)
     output_port.send(msg)
-    log_cc(cc_number, value, ch)
+    log_cc(logger, cc_number, value, ch)
 
     return f"Sent CC {cc_number} = {value} on channel {channel}"
 
@@ -265,7 +204,7 @@ def send_program_change(
     ch = channel - 1
     msg = mido.Message("program_change", program=program, channel=ch)
     output_port.send(msg)
-    log_program_change(program, ch)
+    log_program_change(logger, program, ch)
 
     return f"Sent Program Change to {program} on channel {channel}"
 
@@ -294,7 +233,7 @@ def send_nrpn(
     output_port.send(mido.Message("control_change", control=38, value=0, channel=ch))
 
     param_name = get_param_name(msb, lsb)
-    log_nrpn(msb, lsb, value, ch, param_name)
+    log_nrpn(logger, msb, lsb, value, ch, param_name)
 
     return f"Sent NRPN {msb}:{lsb} = {value} on channel {channel}" + (f" ({param_name})" if param_name else "")
 
@@ -312,7 +251,7 @@ def send_midi_start() -> str:
 
     msg = mido.Message("start")
     output_port.send(msg)
-    log_transport("START")
+    log_transport(logger, "START")
 
     return "Sent MIDI Start"
 
@@ -325,7 +264,7 @@ def send_midi_stop() -> str:
 
     msg = mido.Message("stop")
     output_port.send(msg)
-    log_transport("STOP")
+    log_transport(logger, "STOP")
 
     return "Sent MIDI Stop"
 
@@ -338,7 +277,7 @@ def send_midi_continue() -> str:
 
     msg = mido.Message("continue")
     output_port.send(msg)
-    log_transport("CONTINUE")
+    log_transport(logger, "CONTINUE")
 
     return "Sent MIDI Continue"
 
@@ -386,7 +325,7 @@ def set_trig_note(
     output_port.send(mido.Message("control_change", control=6, value=note, channel=ch))
     output_port.send(mido.Message("control_change", control=38, value=0, channel=ch))
 
-    log_nrpn(msb, lsb, note, ch, f"Trig {step} Note")
+    log_nrpn(logger, msb, lsb, note, ch, f"Trig {step} Note")
 
     return f"Set Track {track} Step {step} note to {note} ({note_name(note)})"
 
@@ -413,7 +352,7 @@ def set_trig_velocity(
     output_port.send(mido.Message("control_change", control=6, value=velocity, channel=ch))
     output_port.send(mido.Message("control_change", control=38, value=0, channel=ch))
 
-    log_nrpn(msb, lsb, velocity, ch, f"Trig {step} Velocity")
+    log_nrpn(logger, msb, lsb, velocity, ch, f"Trig {step} Velocity")
 
     return f"Set Track {track} Step {step} velocity to {velocity}"
 
@@ -440,7 +379,7 @@ def set_trig_length(
     output_port.send(mido.Message("control_change", control=6, value=length, channel=ch))
     output_port.send(mido.Message("control_change", control=38, value=0, channel=ch))
 
-    log_nrpn(msb, lsb, length, ch, f"Trig {step} Length")
+    log_nrpn(logger, msb, lsb, length, ch, f"Trig {step} Length")
 
     return f"Set Track {track} Step {step} length to {length}"
 
@@ -536,7 +475,7 @@ def set_parameter(
     if cc is not None:
         msg = mido.Message("control_change", control=cc, value=value, channel=ch)
         output_port.send(msg)
-        log_cc(cc, value, ch, name)
+        log_cc(logger, cc, value, ch, name)
         return f"Set {name} = {value} (CC {cc}) on channel {channel}"
     else:
         return f"Parameter {name} does not have a CC mapping"
@@ -599,7 +538,7 @@ def send_sysex(
 
     msg = mido.Message("sysex", data=sysex_data)
     output_port.send(msg)
-    log_sysex(sysex_data)
+    log_sysex(logger, sysex_data)
 
     hex_display = " ".join([f"{b:02X}" for b in sysex_data[:16]])
     if len(sysex_data) > 16:
@@ -614,10 +553,8 @@ def send_sysex(
 
 
 async def _delayed_note_off(note: int, duration: float, channel: int = 0):
-    """Send note off after a delay"""
-    await asyncio.sleep(duration)
-    if output_port:
-        output_port.send(mido.Message("note_off", note=note, velocity=0, channel=channel))
+    """Send note off after a delay (wraps shared helper with module-level port)"""
+    await delayed_note_off(output_port, note, duration, channel)
 
 
 @mcp.tool()
@@ -642,7 +579,7 @@ async def play_with_clock(
 
     if send_start:
         output_port.send(mido.Message("start"))
-        log_transport("START")
+        log_transport(logger, "START")
 
     start_time = time.time()
 
@@ -657,7 +594,7 @@ async def play_with_clock(
 
     if send_stop:
         output_port.send(mido.Message("stop"))
-        log_transport("STOP")
+        log_transport(logger, "STOP")
         status = "and stopped"
     else:
         status = "(still running)"
@@ -699,7 +636,7 @@ async def play_pattern_with_tracks(
     logger.info(f"▶️  PLAY PATTERN: {bars} bars @ {bpm} BPM, {len(triggers)} triggers")
 
     output_port.send(mido.Message("start"))
-    log_transport("START")
+    log_transport(logger, "START")
 
     start_time = time.time()
     trigger_idx = 0
@@ -723,7 +660,7 @@ async def play_pattern_with_tracks(
 
     if send_stop:
         output_port.send(mido.Message("stop"))
-        log_transport("STOP")
+        log_transport(logger, "STOP")
         status = "and stopped"
     else:
         status = "(still running)"
@@ -768,7 +705,7 @@ async def play_pattern_with_melody(
     logger.info(f"▶️  PLAY MELODY: {bars} bars @ {bpm} BPM, {len(notes)} notes on ch={channel}")
 
     output_port.send(mido.Message("start"))
-    log_transport("START")
+    log_transport(logger, "START")
 
     start_time = time.time()
     note_idx = 0
@@ -791,7 +728,7 @@ async def play_pattern_with_melody(
 
     if send_stop:
         output_port.send(mido.Message("stop"))
-        log_transport("STOP")
+        log_transport(logger, "STOP")
         status = "and stopped"
     else:
         status = "(still running)"
@@ -834,7 +771,7 @@ async def play_pattern_with_loop(
     loop_schedule.sort(key=lambda x: x[0])
 
     output_port.send(mido.Message("start"))
-    log_transport("START")
+    log_transport(logger, "START")
 
     start_time = time.time()
 
@@ -925,7 +862,7 @@ async def play_pattern_with_tracks_and_melody(
                 spp_position = int(midi_start_at_beat * 4)
                 output_port.send(mido.Message("songpos", pos=spp_position))
             output_port.send(mido.Message("start"))
-            log_transport("START")
+            log_transport(logger, "START")
             midi_started = True
 
         if midi_started:
@@ -946,7 +883,7 @@ async def play_pattern_with_tracks_and_melody(
 
     if send_stop and midi_started:
         output_port.send(mido.Message("stop"))
-        log_transport("STOP")
+        log_transport(logger, "STOP")
         status = "and stopped"
     elif midi_started:
         status = "(still running)"
@@ -1031,7 +968,7 @@ async def play_pattern_with_multi_channel_midi(
 
     if send_clock:
         output_port.send(mido.Message("start"))
-        log_transport("START")
+        log_transport(logger, "START")
 
     start_time = time.time()
     event_idx = 0
@@ -1062,7 +999,7 @@ async def play_pattern_with_multi_channel_midi(
 
     if send_stop and send_clock:
         output_port.send(mido.Message("stop"))
-        log_transport("STOP")
+        log_transport(logger, "STOP")
         status = "and stopped"
     else:
         status = "(still running)" if send_clock else "(no clock)"
@@ -1209,7 +1146,7 @@ async def play_pattern_with_parameter_automation(
     logger.info(f"▶️  PLAY WITH AUTOMATION: {bars} bars @ {bpm} BPM")
 
     output_port.send(mido.Message("start"))
-    log_transport("START")
+    log_transport(logger, "START")
 
     start_time = time.time()
     event_idx = 0
@@ -1250,7 +1187,7 @@ async def play_pattern_with_parameter_automation(
 
     if send_stop:
         output_port.send(mido.Message("stop"))
-        log_transport("STOP")
+        log_transport(logger, "STOP")
 
     return f"Played {bars} bars with {len(triggers)} triggers and {len(parameter_automation)} automated parameters"
 
@@ -2033,7 +1970,7 @@ def get_digitakt_status() -> str:
 
 def main():
     """Main entry point"""
-    connect_midi()
+    _connect()
     mcp.run()
 
 

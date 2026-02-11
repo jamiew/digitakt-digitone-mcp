@@ -255,6 +255,8 @@ def test_list_parameters():
 
 def test_resources():
     """Test resource functions"""
+    # Re-setup mocks in case another test file overrode them
+    setup_mocks()
     ports = server.get_midi_ports()
     assert "Elektron Digitakt" in ports
 
