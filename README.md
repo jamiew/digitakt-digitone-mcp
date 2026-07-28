@@ -213,8 +213,9 @@ names on demand instead of carrying them in every tool description).
 
 This repo covers the machines the author owns. For everything else:
 
-- **Digitakt II / Digitone II** — not supported here; the parameter maps differ
-  substantially. [`roomi-fields/osc-bridge`](https://github.com/roomi-fields/osc-bridge)
+- **Digitakt II** — [`feamster/digitakt-midi-mcp`](https://github.com/feamster/digitakt-midi-mcp),
+  the project this one grew out of. Its parameter map is built for the II.
+- **Digitakt II / Digitone II** — [`roomi-fields/osc-bridge`](https://github.com/roomi-fields/osc-bridge)
   ships an MCP server with `digitakt_ii.json` (262 params) and `digitone_ii.json` (322),
   alongside Syntakt, Octatrack, Analog Four/Rytm and Tonverk.
 - **Digitone II specifically** — [`zerubeus/elektron-mcp`](https://pypi.org/project/elektron-mcp/)
@@ -233,37 +234,42 @@ the server. PRs welcome; a Digitakt II is mostly a new parameter map.
 
 ---
 
-## Relationship to the original
+## Origins
 
-This started as a fork of [`feamster/digitakt-midi-mcp`](https://github.com/feamster/digitakt-midi-mcp)
-and has diverged far enough to be a different project. Credit where it's due — that repo
-is where the Digitakt parameter tables and the first working tool set came from.
+This project began as a fork of
+[`feamster/digitakt-midi-mcp`](https://github.com/feamster/digitakt-midi-mcp) by
+[@feamster](https://github.com/feamster) — thank you. That repo is where the Digitakt
+parameter tables and the first working set of MIDI tools came from, and having something
+that already talked to the hardware is what made everything here possible. If you have a
+Digitakt II, go there first: it targets that machine, and this one doesn't.
 
-**The most important difference: that project targets the Digitakt II, this one targets
-the original Digitakt.** They are genuinely different machines over MIDI. Its CC map
-expects AMP Volume on **CC 89** and Pan on **CC 90**; the original Digitakt uses **CC 7**
-and **CC 10**. Its parameter set also assumes amp sustain/release stages and a chorus send
-that the mk1 simply doesn't have. Point the wrong one at your hardware and parameters land
-in the wrong place, silently.
+It's now a standalone repo rather than a fork, because the two have diverged to the point
+where nothing meaningful could be merged in either direction.
+
+**The difference that matters most is the hardware.** That project targets the
+**Digitakt II**; this one targets the **original Digitakt** (and the original Digitone).
+They are genuinely different machines over MIDI — its CC map puts AMP Volume on **CC 89**
+and Pan on **CC 90**, where the mk1 uses **CC 7** and **CC 10**, and it assumes amp
+sustain/release stages and a chorus send the mk1 doesn't have. Point the wrong map at your
+hardware and parameters land in the wrong place, silently.
+
+Everything else that changed:
 
 | | `feamster/digitakt-midi-mcp` | this project |
 |---|---|---|
-| Target hardware | Digitakt II | Digitakt (original) + Digitone (original) |
-| Devices | 1 | 2, each an independent server |
-| Structure | one 4,000-line `server.py` | `src/elektron_mcp/` package, devices as data |
-| MCP API | low-level `mcp.server.Server` | FastMCP |
+| Target hardware | Digitakt II | Digitakt + Digitone, both originals |
+| Devices | 1 | 2, each its own server, each installable alone |
+| Structure | one 4,300-line `server.py` | `src/elektron_mcp/` package, devices as data |
+| MCP API | low-level `mcp.server.Server` | FastMCP, with resources as well as tools |
+| Install | `requirements.txt` | `uv` + hatchling, console scripts, wheel |
+| Python | 3.10+ | 3.11–3.13, `py.typed`, checked with `ty` |
 | Tests | hardware scripts only | 62 tests, no hardware needed |
-| CI / types / packaging | — | GitHub Actions, `ty`, `py.typed`, wheel build |
+| CI | — | GitHub Actions: format, lint, types, tests, build |
 | License | none | MIT |
 
-We hold every commit from that repo; it has none we lack, and has been dormant since
-December 2025. There is nothing left to merge in either direction — the codebases no
-longer resemble each other.
-
-One fix here would still apply cleanly upstream: scheduled note-off tasks are created
-without keeping a reference, and asyncio holds only weak references to tasks, so a
-note-off can be garbage-collected before it fires and leave a stuck note. That pattern
-appears seven times in their `server.py`.
+The Digitone support, the shared device-spec core, the packaging, the tests and the type
+checking are all new here. The CC/NRPN tables are the part with a shared ancestor, and
+they've since been corrected for the mk1.
 
 ---
 
@@ -320,8 +326,7 @@ Device and protocol documentation:
 Prior art and inspiration:
 
 - [`feamster/digitakt-midi-mcp`](https://github.com/feamster/digitakt-midi-mcp) — the
-  Digitakt MCP this project started from; see
-  [Relationship to the original](#relationship-to-the-original)
+  Digitakt MCP this project started from; see [Origins](#origins)
 - [`pencilresearch/midi`](https://github.com/pencilresearch/midi) (CC-BY-SA-4.0) — CC/NRPN
   database covering the Elektron line, useful for cross-checking parameter maps
 - [`roomi-fields/osc-bridge`](https://github.com/roomi-fields/osc-bridge) (GPL-3.0) —
