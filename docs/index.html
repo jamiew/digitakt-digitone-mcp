@@ -3,10 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Elektron MIDI MCP — play your Digitakt and Digitone with an LLM</title>
+<title>Digitakt + Digitone MCP — play your Elektron hardware with an LLM</title>
 <meta name="description" content="MCP servers that let an LLM play your Elektron Digitakt and Digitone over MIDI. Trigger tracks, tweak parameters, run clock-synced patterns, export to .mid.">
-<meta property="og:title" content="Elektron MIDI MCP">
+<meta property="og:title" content="Digitakt + Digitone MCP">
 <meta property="og:description" content="MCP servers that let an LLM play your Elektron Digitakt and Digitone over MIDI.">
+<meta property="og:image" content="https://jamiew.github.io/digitakt-digitone-mcp/assets/banner.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23000'/><rect x='4' y='13' width='6' height='6' rx='1.5' fill='%23FFB000'/><rect x='13' y='13' width='6' height='6' rx='1.5' fill='%233a3a3a'/><rect x='22' y='13' width='6' height='6' rx='1.5' fill='%233a3a3a'/></svg>">
@@ -184,7 +186,7 @@ footer p{margin:0 0 10px}
 <header>
   <div class="wrap hero-inner">
     <p class="legend"><span class="tick">●</span>Model Context Protocol · MIDI</p>
-    <h1>Elektron<br>MIDI <span class="amber">MCP</span></h1>
+    <h1>Digitakt +<br>Digitone <span class="amber">MCP</span></h1>
     <p class="lede">
       Let an LLM play your hardware. Trigger tracks, sculpt FM operators, run
       clock-locked patterns, and bounce the result to <code>.mid</code> — on an
@@ -196,14 +198,14 @@ footer p{margin:0 0 10px}
       <p class="seqhint">16 steps · tap to edit</p>
     </div>
 
-    <div class="cmd"><span class="p">$ </span>git clone https://github.com/jamiew/digitakt-midi-mcp
-<span class="p">$ </span>cd digitakt-midi-mcp &amp;&amp; uv sync
+    <div class="cmd"><span class="p">$ </span>git clone https://github.com/jamiew/digitakt-digitone-mcp
+<span class="p">$ </span>cd digitakt-digitone-mcp &amp;&amp; uv sync
 <span class="p">$ </span>uv run digitakt-mcp<span class="c">   # or: digitone-mcp</span></div>
     <p class="note">Python 3.11+ · macOS, Linux, Windows · MIT</p>
 
     <div class="btns">
-      <a class="btn primary" href="https://github.com/jamiew/digitakt-midi-mcp">View on GitHub</a>
-      <a class="btn" href="https://github.com/jamiew/digitakt-midi-mcp#install">Install guide</a>
+      <a class="btn primary" href="https://github.com/jamiew/digitakt-digitone-mcp">View on GitHub</a>
+      <a class="btn" href="https://github.com/jamiew/digitakt-digitone-mcp#install">Install guide</a>
     </div>
   </div>
 </header>
@@ -311,7 +313,7 @@ footer p{margin:0 0 10px}
 <footer>
   <div class="wrap">
     <p>
-      <a href="https://github.com/jamiew/digitakt-midi-mcp">github.com/jamiew/digitakt-midi-mcp</a>
+      <a href="https://github.com/jamiew/digitakt-digitone-mcp">github.com/jamiew/digitakt-digitone-mcp</a>
       · MIT · built with <a href="https://modelcontextprotocol.io/">MCP</a> and
       <a href="https://github.com/mido/mido">mido</a>
     </p>

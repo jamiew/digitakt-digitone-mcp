@@ -1,7 +1,16 @@
-# Elektron MIDI MCP
+<p align="center">
+  <img src="docs/assets/banner.jpg" width="100%"
+       alt="Two matte-black hardware instruments seen from above, their pads and displays glowing amber, joined by a single thread of amber light running between them">
+</p>
+
+# Digitakt + Digitone MCP
 
 MCP servers that let an LLM play your Elektron hardware over MIDI — trigger tracks, tweak
 parameters, run clock-synced patterns, and export what it made to `.mid`.
+
+<p>
+  <a href="https://jamiew.github.io/digitakt-digitone-mcp/"><strong>jamiew.github.io/digitakt-digitone-mcp</strong></a>
+</p>
 
 Two servers ship today, and **you install and run them independently**:
 
@@ -27,8 +36,8 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # if you don't have uv
 
-git clone https://github.com/jamiedubs/elektron-midi-mcp
-cd elektron-midi-mcp
+git clone https://github.com/jamiew/digitakt-digitone-mcp
+cd digitakt-digitone-mcp
 uv sync
 ```
 
@@ -52,7 +61,7 @@ uv run digitakt-mcp
 Claude Code:
 
 ```bash
-claude mcp add digitakt -- uv --directory /path/to/elektron-midi-mcp run digitakt-mcp
+claude mcp add digitakt -- uv --directory /path/to/digitakt-digitone-mcp run digitakt-mcp
 ```
 
 Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`) or any
@@ -63,7 +72,7 @@ other MCP client:
   "mcpServers": {
     "digitakt": {
       "command": "uv",
-      "args": ["--directory", "/path/to/elektron-midi-mcp", "run", "digitakt-mcp"]
+      "args": ["--directory", "/path/to/digitakt-digitone-mcp", "run", "digitakt-mcp"]
     }
   }
 }
@@ -126,7 +135,7 @@ uv run digitone-mcp
 Claude Code:
 
 ```bash
-claude mcp add digitone -- uv --directory /path/to/elektron-midi-mcp run digitone-mcp
+claude mcp add digitone -- uv --directory /path/to/digitakt-digitone-mcp run digitone-mcp
 ```
 
 Or in an MCP client config:
@@ -136,7 +145,7 @@ Or in an MCP client config:
   "mcpServers": {
     "digitone": {
       "command": "uv",
-      "args": ["--directory", "/path/to/elektron-midi-mcp", "run", "digitone-mcp"]
+      "args": ["--directory", "/path/to/digitakt-digitone-mcp", "run", "digitone-mcp"]
     }
   }
 }
