@@ -1,5 +1,5 @@
 [project]
-name = "elektron-midi-mcp"
+name = "digitakt-digitone-mcp"
 version = "0.3.0"
 description = "MCP servers for controlling Elektron Digitakt and Digitone over MIDI"
 readme = "README.md"
@@ -24,8 +24,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jamiedubs/elektron-midi-mcp"
-Issues = "https://github.com/jamiedubs/elektron-midi-mcp/issues"
+Homepage = "https://github.com/jamiew/digitakt-digitone-mcp"
+Issues = "https://github.com/jamiew/digitakt-digitone-mcp/issues"
 
 [project.scripts]
 digitakt-mcp = "elektron_mcp.devices.digitakt:main"
