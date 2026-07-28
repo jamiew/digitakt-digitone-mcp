@@ -9,7 +9,7 @@ Key differences from Digitakt:
 - Different CC numbers for filter, amp, etc.
 """
 
-from nrpn_constants_digitone import (
+from elektron_mcp.devices.digitone_cc import (
     AmpCC,
     ChorusParams,
     DelayParams,
@@ -174,32 +174,7 @@ PARAMETER_MAP = {
 }
 
 
-def validate_parameter(param_name: str, value: int) -> tuple[bool, str]:
-    """Validate a parameter name and value. Returns (is_valid, error_message)."""
-    if param_name not in PARAMETER_MAP:
-        available = ", ".join(sorted(PARAMETER_MAP.keys()))
-        return False, f"Unknown parameter '{param_name}'. Available: {available}"
-
-    param_info = PARAMETER_MAP[param_name]
-    min_val, max_val = param_info["range"]
-
-    if not (min_val <= value <= max_val):
-        return False, f"Value {value} out of range for '{param_name}' (valid: {min_val}-{max_val})"
-
-    return True, ""
-
-
-def get_parameter_info(param_name: str) -> dict:
-    """Get parameter mapping info"""
-    return PARAMETER_MAP.get(param_name)
-
-
-def get_all_parameters() -> list[str]:
-    """Get list of all available parameter names"""
-    return sorted(PARAMETER_MAP.keys())
-
-
-def get_parameters_by_category() -> dict:
+def get_parameters_by_category() -> dict[str, list[str]]:
     """Get parameters organized by category"""
     categories = {
         "FM Synthesis (SYN1)": [],

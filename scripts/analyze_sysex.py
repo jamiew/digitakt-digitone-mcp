@@ -5,6 +5,7 @@ Usage: python analyze_sysex.py <file.syx>
 """
 
 import sys
+from pathlib import Path
 
 import mido
 
@@ -69,8 +70,7 @@ def analyze_sysex_file(filepath):
 
         # Try reading as raw .syx file
         try:
-            with open(filepath, "rb") as f:
-                data = f.read()
+            data = Path(filepath).read_bytes()
 
             print(f"File size: {len(data)} bytes")
 

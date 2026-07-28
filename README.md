@@ -1,422 +1,306 @@
-# Digitakt MIDI MCP Server
+# Elektron MIDI MCP
 
-An MCP (Model Context Protocol) server for controlling the Elektron Digitakt (original) via MIDI.
+MCP servers that let an LLM play your Elektron hardware over MIDI — trigger tracks, tweak
+parameters, run clock-synced patterns, and export what it made to `.mid`.
 
-> **Note:** This is for the **original Digitakt**, NOT Digitakt II. Key differences:
-> - 8 audio tracks (not 16)
-> - 8 MIDI tracks (separate, unlike Digitakt II where any track can be MIDI)
-> - Only 1 LFO (not 3)
-> - No Chorus effect
-> - Different AMP CC numbers (Volume=CC 7, Pan=CC 10)
+Two servers ship today, and **you install and run them independently**:
 
-## Project Structure
+| Server | Device | Tools | ~Token cost |
+|--------|--------|-------|-------------|
+| `digitakt-mcp` | Elektron Digitakt (original) | 44 | ~5.2k |
+| `digitone-mcp` | Elektron Digitone (original) | 43 | ~5.1k |
 
-```
-digitakt-midi-mcp/
-├── pyproject.toml         # Project config (uv)
-├── server_fastmcp.py      # FastMCP server (44 tools)
-├── digitakt_midi.py       # Entry point
-├── nrpn_constants.py      # MIDI NRPN mappings
-├── parameter_map.py       # Named parameter → CC/NRPN mapping
-├── tests/                 # Unit + hardware tests
-└── PLAN.md                # TODO list and architecture
-```
+They share one implementation internally — a device is a `DeviceSpec` (port name, track
+count, parameter table) over a common core — but each is its own MCP server with its own
+storage and its own tool list. Installing only the Digitakt costs you nothing for the Digitone.
 
-## Features
+> **Which hardware?** This targets the **original** Digitakt and Digitone, not the
+> **Digitakt II** or **Digitone II**. The mk2 machines have different track counts, more
+> LFOs, and different parameter maps — see [Other Elektron devices](#other-elektron-devices).
 
-- **MIDI Notes**: Trigger tracks (1-8), play melodies, sequences
-- **Parameter Control**: Named parameters via `set_parameter` (filter, amp, LFO, FX)
-- **Transport**: Start/stop/continue, song position, MIDI clock sync
-- **Pattern Playback**: Multi-track triggers, melodies, loops with clock
-- **Automation**: Parameter sweeps, ADSR envelopes, real-time modulation
-- **Pattern Storage**: Save/load patterns and automation presets to JSON
-- **MIDI Export**: Export patterns and melodies to .mid files
-- **MIDI Recording**: Monitor and record incoming MIDI to .mid files
+---
 
-## Installation
+## Install
 
-1. **Install uv** (if you don't have it):
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+curl -LsSf https://astral.sh/uv/install.sh | sh   # if you don't have uv
 
-2. **Clone and sync dependencies:**
-```bash
-git clone <repo-url>
-cd digitakt-midi-mcp
+git clone https://github.com/jamiedubs/elektron-midi-mcp
+cd elektron-midi-mcp
 uv sync
 ```
 
-3. **Connect your Digitakt via USB**:
-   - Connect the Digitakt to your computer via USB
-   - The Digitakt should appear as a MIDI device named "Elektron Digitakt"
-   - On macOS, you can verify in Audio MIDI Setup that the device is visible
-   - If using Overbridge, make sure Overbridge Engine is running
+Connect the device over USB first. Ports are matched by name, so there's nothing to
+configure as long as it appears as "Elektron Digitakt" / "Elektron Digitone" — on macOS
+you can confirm in Audio MIDI Setup. If you use Overbridge, the Overbridge Engine needs
+to be running.
 
-4. **Configure Digitakt MIDI Settings for Multi-Track Triggering:**
+---
 
-The MCP server sends track triggers on per-track MIDI channels (Track 1 on Channel 1, Track 2 on Channel 2, etc.). To enable simultaneous triggering of multiple tracks, you must configure your Digitakt:
+## Digitakt
 
-**Settings → MIDI Config → Channels:**
-- **Option A: Per-Track Channels (Recommended for MCP)**
-  - Set each track to its corresponding MIDI channel:
-    - Track 1: Channel 1
-    - Track 2: Channel 2
-    - ...
-    - Track 8: Channel 8
-  - This allows the MCP server to trigger multiple tracks simultaneously
+Original Digitakt: 8 audio tracks, 8 separate MIDI tracks, one LFO per track, no chorus.
 
-- **Option B: Auto Channel (Simple but Limited)**
-  - Set all tracks to "Auto Channel" (default)
-  - Only the currently selected track will respond to triggers
-  - You cannot trigger multiple tracks simultaneously from the MCP server
-
-**To set per-track channels on Digitakt:**
-1. Press **[FUNC] + [SETTINGS]**
-2. Navigate to **MIDI** → **CONFIG** → **CHANNELS**
-3. For each track (TRK 1-8), set MIDI IN channel to match track number
-4. Save settings
-
-**Enable MIDI transport control:**
-1. Press **[FUNC] + [SETTINGS]**
-2. Navigate to **MIDI** → **SYNC**
-3. Set **CLOCK RECEIVE** to **ON**
-4. Set **TRANSPORT RECEIVE** to **ON**
-5. Save settings
-
-## Usage
-
-### Running the Server Manually
+### Setup
 
 ```bash
-uv run digitakt-midi
+uv run digitakt-mcp
 ```
 
-### Configuring with Claude Desktop
+Claude Code:
 
-Add this to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```bash
+claude mcp add digitakt -- uv --directory /path/to/elektron-midi-mcp run digitakt-mcp
+```
+
+Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`) or any
+other MCP client:
 
 ```json
 {
   "mcpServers": {
-    "digitakt-midi": {
+    "digitakt": {
       "command": "uv",
-      "args": ["--directory", "/path/to/digitakt-midi-mcp", "run", "digitakt-midi"]
+      "args": ["--directory", "/path/to/elektron-midi-mcp", "run", "digitakt-mcp"]
     }
   }
 }
 ```
 
-Replace `/path/to/digitakt-midi-mcp` with the actual path to this directory.
+### On the device
 
-Then restart Claude Desktop.
+**Per-track MIDI channels.** The server addresses tracks on their own channels, so track
+triggers and per-track parameter changes need this. Without it only the currently selected
+track responds, and parameter changes silently hit the wrong track.
 
-## Available Tools
+1. Press **[FUNC] + [SETTINGS]**
+2. **MIDI → CONFIG → CHANNELS**
+3. Set each track's MIDI IN channel to match its number (TRK 1 → ch 1 … TRK 8 → ch 8)
 
-### send_note
-Send a MIDI note to trigger drums on the Digitakt.
+The alternative is leaving everything on Auto Channel, which is simpler but means you
+cannot trigger multiple tracks at once.
 
-**Parameters:**
-- `note` (required): MIDI note number (0-127). Notes 0-7 trigger tracks 1-8. Notes 12-84 play active track chromatically.
-- `velocity` (optional): Note velocity (1-127), default 100
-- `duration` (optional): How long to hold the note in seconds, default 0.1
-- `channel` (optional): MIDI channel (1-16), default 1
+**Transport and clock**, needed for every `play_*` tool:
 
-**Examples:**
-```
-Play note 0 to trigger track 1 (kick)
-Play note 60 on the active track
-```
+1. Press **[FUNC] + [SETTINGS]**
+2. **MIDI → SYNC**
+3. **CLOCK RECEIVE** → ON, **TRANSPORT RECEIVE** → ON
 
-### trigger_track
-Trigger a one-shot sample on a specific Digitakt track (convenience wrapper).
+**NRPN output**, under **MIDI → CONFIG → PORT CONFIG**, if you want the device's own knob
+moves to come back as NRPN — several parameters have no CC at all and are NRPN-only.
 
-**Parameters:**
-- `track` (required): Track number (1-8)
-- `velocity` (optional): Note velocity (1-127), default 100
-- `duration` (optional): How long to hold the note in seconds, default 0.1
-- `channel` (optional): MIDI channel (1-16), default 1
+### Quirks
 
-**Examples:**
-```
-Trigger track 1 (kick)
-Trigger track 8 with velocity 127
-```
+- **Notes 0–7 trigger tracks 1–8.** Notes 12–84 play the *active* track chromatically.
+  `trigger_track` wraps this so you don't have to do the arithmetic.
+- **Volume is CC 7 and Pan is CC 10**, and Delay/Reverb sends live in the AMP page. The
+  Digitakt II moved these; parameter maps from mk2 sources will not work here.
+- **One LFO.** Anything referencing `lfo2`/`lfo3` is a Digitakt II parameter.
+- **Trig editing is NRPN-only** (`set_trig_note`, `set_trig_velocity`, `set_trig_length`).
+  MSB 3/4/5 select note/velocity/length; the LSB is the zero-based step index.
 
-### send_cc
-Send a Control Change message to adjust Digitakt parameters.
+### Tips
 
-**Parameters:**
-- `cc_number` (required): CC number (0-127)
-- `value` (required): CC value (0-127)
-- `channel` (optional): MIDI channel (1-16), default 1
+- `play_pattern_with_tracks` sends real MIDI clock, so the Digitakt's own sequencer stays
+  locked to whatever the model is playing.
+- `play_pattern_with_multi_channel_midi` is the one to reach for when driving Digitakt
+  drums *and* a synth on MIDI tracks 9–16 in the same pattern.
+- Ask for `list_parameters` before setting up automation — names are specific
+  (`filter_cutoff`, not `cutoff`).
 
-**Common CC Numbers for Digitakt (original):**
+---
 
-**Track:**
-- 93: Solo
-- 94: Mute
-- 95: Track Level
-- 110: Pattern Mute
+## Digitone
 
-**Source:**
-- 16: Tune
-- 17: Play Mode
-- 18: Bit Reduction
-- 19-23: Sample Slot, Start, Length, Loop, Level
+Original Digitone: 4 FM synth tracks, 8 voices shared across them, 2 LFOs per track,
+and a chorus the Digitakt doesn't have.
 
-**Filter Envelope:**
-- 70: Attack Time
-- 71: Decay Time
-- 72: Sustain Level
-- 73: Release Time
-- 74: Filter Frequency
-- 75: Resonance
-- 76: Filter Type
-- 77: Envelope Depth
-
-**AMP Envelope (different from Digitakt II!):**
-- 78: Attack Time
-- 79: Hold Time
-- 80: Decay Time
-- 81: Overdrive
-- 82: Delay Send
-- 83: Reverb Send
-- 10: Pan
-- 7: Volume
-
-**LFO (only 1 LFO, not 3 like Digitakt II):**
-- 102-109: LFO Speed, Multiplier, Fade, Destination, Waveform, Start Phase, Trig Mode, Depth
-
-**Delay FX:**
-- 85-92: Time, Pingpong, Stereo Width, Feedback, HPF, LPF, Reverb Send, Mix
-
-**Reverb FX:**
-- 24: Predelay
-- 25: Decay
-- 2: Shelving Freq
-- 27-29: Shelving Gain, HPF, LPF
-- 31: Mix
-
-**Note:** The original Digitakt does NOT have Chorus (that's Digitakt II only).
-
-### send_program_change
-Switch to a different pattern on the Digitakt.
-
-**Parameters:**
-- `program` (required): Pattern number (0-127)
-- `channel` (optional): MIDI channel (1-16), default 1
-
-### send_nrpn
-Send an NRPN (Non-Registered Parameter Number) message for advanced parameter control.
-
-**Parameters:**
-- `msb` (required): NRPN MSB (1=Track/Trig/Source/Filter/Amp/LFO, 2=FX, 3=Trig Note/Velocity/Length)
-- `lsb` (required): NRPN LSB (parameter number)
-- `value` (required): Parameter value (0-127)
-- `channel` (optional): MIDI channel (1-16), default 1
-
-**Common NRPNs:**
-- MSB=3, LSB=0: Trig Note
-- MSB=3, LSB=1: Trig Velocity
-- MSB=3, LSB=2: Trig Length
-- MSB=1, LSB=20: Filter Frequency
-- MSB=1, LSB=21: Filter Resonance
-
-### Transport Control
-
-#### send_midi_start
-Send MIDI Start message to start the Digitakt's sequencer from the beginning.
-
-#### send_midi_stop
-Send MIDI Stop message to stop the Digitakt's sequencer.
-
-#### send_midi_continue
-Send MIDI Continue message to resume the Digitakt's sequencer from its current position.
-
-#### send_song_position
-Send MIDI Song Position Pointer to jump to a specific position in the sequence.
-
-**Parameters:**
-- `position` (required): Song position in MIDI beats (16th notes). 0 = start, 16 = 1 bar in 4/4 time.
-
-### play_with_clock
-Start the Digitakt sequencer and send MIDI clock for a specified duration.
-
-**Parameters:**
-- `bars` (optional): Number of bars to play in 4/4 time. Default is 4 bars.
-- `bpm` (optional): Tempo in beats per minute. Default is 120 BPM.
-- `send_stop` (optional): Send MIDI Stop after duration. Default is true.
-
-### play_pattern_with_tracks
-Start the Digitakt pattern and trigger specific tracks at specific times.
-
-**Parameters:**
-- `bars` (optional): Number of bars to play. Default is 4.
-- `bpm` (optional): Tempo in BPM. Default is 120.
-- `triggers` (required): Array of `[beat, track, velocity]` where beat is 0-based quarter note, track is 1-8, velocity is 1-127.
-- `send_stop` (optional): Send MIDI Stop after duration. Default is true.
-
-### play_pattern_with_melody
-Start the Digitakt pattern and play a melodic sequence on the active track.
-
-**Parameters:**
-- `bars` (optional): Number of bars to play. Default is 4.
-- `bpm` (optional): Tempo in BPM. Default is 120.
-- `notes` (required): Array of `[beat, note, velocity, duration]` where beat is 0-based quarter note, note is MIDI note 12-127, velocity is 1-127, duration is in seconds.
-- `channel` (optional): MIDI channel (1-16). Default is 1.
-- `send_stop` (optional): Send MIDI Stop after duration. Default is true.
-
-## Parameter Automation Framework
-
-The Digitakt MIDI MCP server includes a powerful parameter automation framework for creating dynamic, evolving sounds.
-
-**Important:** Parameter automation is sent in real-time via MIDI and is NOT saved to Digitakt patterns.
-
-### Preset Storage Location
-
-All automation presets are stored in: `~/.mcp-config/digitakt/presets/`
-
-### Available Parameters
-
-Use the `list_parameters` tool to see all available parameters:
-- **Filter**: cutoff, resonance, type, envelope (ADSR + depth)
-- **Amp**: volume, pan, attack, hold, decay, overdrive
-- **Source/Sample**: tune, bit reduction, sample start/length/loop/level
-- **LFO**: speed, multiplier, fade, destination, waveform, start phase, trig mode, depth
-- **FX Sends**: delay, reverb (no chorus on original Digitakt!)
-- **Delay/Reverb FX**: detailed parameters for each effect
-- **Track**: level, mute, solo
-- **Trig**: note, velocity, length
-
-### set_parameter
-
-Set any parameter to a specific value instantly.
-
-**Parameters:**
-- `parameter` (required): Parameter name (e.g., 'filter_cutoff', 'lfo_depth', 'amp_volume')
-- `value` (required): Parameter value (0-127)
-- `channel` (optional): MIDI channel (1-16), default 1
-
-**Channel Routing:**
-On the Digitakt, each track (1-8) has its own MIDI channel (1-8). To control parameters on a specific track:
-- Track 1 parameters → channel 1
-- Track 8 parameters → channel 8
-
-### send_parameter_sweep
-
-Smoothly sweep any parameter from one value to another over a specified duration.
-
-**Parameters:**
-- `parameter` (required): Parameter name
-- `start_value` (required): Starting value (0-127)
-- `end_value` (required): Ending value (0-127)
-- `duration_sec` (required): Duration in seconds
-- `curve` (optional): 'linear', 'exponential', or 'logarithmic', default 'linear'
-- `steps` (optional): Number of messages to send, default 50
-- `channel` (optional): MIDI channel (1-16), default 1
-
-### send_parameter_envelope
-
-Apply an ADSR-style envelope to any parameter.
-
-**Parameters:**
-- `parameter` (required): Parameter name
-- `attack_sec` (required): Attack time (time to reach peak 127)
-- `decay_sec` (required): Decay time (time to drop to sustain level)
-- `sustain_level` (required): Sustain value (0-127)
-- `release_sec` (required): Release time (time to return to 0)
-- `steps_per_stage` (optional): Messages per stage, default 20
-- `channel` (optional): MIDI channel (1-16), default 1
-
-## Digitakt MIDI Reference
-
-### Note Numbers for Tracks
-
-**To trigger one-shots on specific audio tracks (1-8):**
-- Track 1: MIDI note **0** (C-2)
-- Track 2: MIDI note **1** (C#-2)
-- Track 3: MIDI note **2** (D-2)
-- Track 4: MIDI note **3** (D#-2)
-- Track 5: MIDI note **4** (E-2)
-- Track 6: MIDI note **5** (F-2)
-- Track 7: MIDI note **6** (F#-2)
-- Track 8: MIDI note **7** (G-2)
-
-**To play the currently active track chromatically:**
-- MIDI notes **12 and above** (C0+) will play the active track at different pitches
-
-**Note:** MIDI channels 1-8 can be assigned to tracks 1-8, or use AUTO CHANNEL to control the currently active track.
-
-### NRPN Parameters
-
-NRPNs provide access to more parameters than standard CCs. See `nrpn_constants.py` for the complete parameter list.
-
-**NRPN Structure:**
-- MSB (CC 99): Category (1, 2, or 3)
-- LSB (CC 98): Specific parameter
-- Data Entry MSB (CC 6): Value (0-127)
-- Data Entry LSB (CC 38): Fine value (usually 0)
-
-**Categories:**
-- **MSB 1**: Track, Source, Filter, Amp, LFO parameters
-- **MSB 2**: FX (Delay and Reverb) parameters
-- **MSB 3**: Trig parameters (Note, Velocity, Length)
-
-## Testing
+### Setup
 
 ```bash
-# Unit tests (no hardware needed)
-uv run pytest tests/test_fastmcp_migration.py -v
-
-# All tests (requires connected Digitakt)
-uv run pytest
-
-# Lint and format check
-uv run ruff check . && uv run ruff format --check .
+uv run digitone-mcp
 ```
 
-## Troubleshooting
+Claude Code:
 
-**MIDI device not found:**
-- Make sure the Digitakt is connected via USB
-- Check that the device shows up in Audio MIDI Setup (macOS)
-- The device should appear as "Elektron Digitakt" (without "II")
-- If using Overbridge, make sure the Overbridge Engine is running
+```bash
+claude mcp add digitone -- uv --directory /path/to/elektron-midi-mcp run digitone-mcp
+```
 
-**No sound when triggering:**
-- Check that MIDI transport receive is enabled (Settings → MIDI → Sync)
-- Verify the MIDI channel configuration matches your setup
-- Make sure the track has a sample loaded
+Or in an MCP client config:
 
-**Permission errors:**
-- On macOS, you may need to grant microphone permissions to Terminal/iTerm
-- Check System Preferences > Security & Privacy > Privacy > Microphone
+```json
+{
+  "mcpServers": {
+    "digitone": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/elektron-midi-mcp", "run", "digitone-mcp"]
+    }
+  }
+}
+```
 
-## Key Differences from Digitakt II
+### On the device
 
-If you're coming from Digitakt II documentation, note these important differences:
+Same idea as the Digitakt — **[FUNC] + [SETTINGS] → MIDI → CONFIG → CHANNELS**, with
+tracks 1–4 on channels 1–4, and **MIDI → SYNC** with CLOCK RECEIVE and TRANSPORT RECEIVE
+on. NRPN output matters more here: the Digitone has more NRPN-only parameters than the
+Digitakt.
 
-| Feature | Digitakt (original) | Digitakt II |
-|---------|---------------------|-------------|
-| Audio Tracks | 8 | 16 |
-| MIDI Tracks | 8 (separate) | Any track |
-| LFOs | 1 | 3 |
-| Chorus Effect | ❌ | ✅ |
-| Compressor | ❌ | ✅ |
-| Volume CC | 7 | 89 |
-| Pan CC | 10 | 90 |
-| AMP Attack CC | 78 | 79 |
-| AMP Hold CC | 79 | 80 |
-| AMP Decay CC | 80 | 81 |
-| Delay Send CC | 82 | 84 |
-| Reverb Send CC | 83 | 85 |
+The chorus is a send effect and answers on the **FX channel, default 9** — `set_chorus`
+targets that channel, not a track.
 
-## Resources
+### Quirks
 
-- [Digitakt User Manual (PDF)](https://www.elektron.se/wp-content/uploads/2024/09/Digitakt_User_Manual_ENG_OS1.51_231108.pdf)
-- [Digitakt MIDI Implementation](https://midi.guide/d/elektron/digitakt/)
-- [Elektronauts Forum](https://www.elektronauts.com/)
+- **Everything is chromatic.** There are no trigger notes; every track plays pitched.
+- **Tracks are polyphonic** — use `play_chord` rather than stacking `send_note` calls.
+  All four tracks share one 8-voice pool, so a 4-note chord on two tracks is your budget.
+- **Algorithms are 1–8 on screen but 0–7 over MIDI.** `set_algorithm` takes the number you
+  see on the device and converts.
+- **`filter_cutoff` is CC 23 here, not CC 74** like the Digitakt. Parameter names are
+  shared across devices but the CC behind them is not — always go through `set_parameter`
+  rather than hardcoding CC numbers.
+- **Operator B is a pair.** `ratio_b` and `b_level` move B1 and B2 together; the Digitone
+  exposes no separate control for them over MIDI.
+
+### Tips
+
+- FM starting points: integer ratios (1, 2, 3) are harmonic and saw/square-ish;
+  non-integer ratios give bells and metal. Raise `set_operator_levels` for brightness.
+- `set_operator_envelope` has an `end` level, which is FM-specific — it's the modulation
+  depth *held* after decay, and it's what makes a patch evolve rather than just decay.
+- Algorithm 8 is all carriers (organ/additive); algorithm 1 is a full cascade and the most
+  aggressive. `set_algorithm` returns the routing diagram in its response.
+
+---
+
+## What both servers can do
+
+| Category | Tools |
+|----------|-------|
+| Core MIDI | `send_note`, `send_cc`, `send_nrpn`, `send_program_change`, `send_sysex`, `send_note_sequence` |
+| Transport | `send_midi_start`, `send_midi_stop`, `send_midi_continue`, `send_song_position` |
+| Parameters | `list_parameters`, `set_parameter` |
+| Playback | `play_with_clock`, `play_pattern_with_melody`, `play_pattern_with_loop`, `play_pattern_with_multi_channel_midi`, `play_pattern_with_parameter_automation` |
+| Automation | `send_parameter_sweep`, `send_parameter_envelope` |
+| Patterns | `save_pattern`, `load_pattern`, `list_patterns`, `delete_pattern`, `update_pattern`, `edit_pattern_triggers`, `edit_pattern_chords` |
+| Presets | `save_automation_preset`, `load_automation_preset`, `list_automation_presets` |
+| Export | `export_pattern_to_midi`, `export_automation_to_midi`, `save_last_melody`, `save_last_pattern` |
+| Recording | `monitor_midi_input`, `record_midi_input`, `list_midi_recordings`, `play_midi_file` |
+
+Digitakt adds `trigger_track`, `set_trig_note`, `set_trig_velocity`, `set_trig_length`,
+`reset_velocities`, `play_pattern_with_tracks`, `play_pattern_with_tracks_and_melody`.
+
+Digitone adds `play_chord`, `set_algorithm`, `set_ratios`, `set_operator_levels`,
+`set_operator_envelope`, `set_chorus`.
+
+Each server also exposes three resources: `midi://ports`, `midi://<device>/status`, and
+`midi://<device>/parameters` (the full parameter table as JSON, so the model can look up
+names on demand instead of carrying them in every tool description).
+
+### Where data goes
+
+```
+~/.mcp-config/digitakt/{patterns,presets,recordings}/
+~/.mcp-config/digitone/{patterns,presets,recordings}/
+```
+
+---
+
+## Other Elektron devices
+
+This repo covers the machines the author owns. For everything else:
+
+- **Digitakt II / Digitone II** — not supported here; the parameter maps differ
+  substantially. [`roomi-fields/osc-bridge`](https://github.com/roomi-fields/osc-bridge)
+  ships an MCP server with `digitakt_ii.json` (262 params) and `digitone_ii.json` (322),
+  alongside Syntakt, Octatrack, Analog Four/Rytm and Tonverk.
+- **Digitone II specifically** — [`zerubeus/elektron-mcp`](https://pypi.org/project/elektron-mcp/)
+  on PyPI (`uvx elektron-mcp`) carries display-value↔MIDI scaling tables for the FM Tone,
+  Wavetone and Swarmer engines. Its GitHub source has been deleted; the PyPI package and
+  the [`ftupas/elektron-mcp`](https://github.com/ftupas/elektron-mcp) fork remain.
+- **Any Elektron device, parameter data only** —
+  [`pencilresearch/midi`](https://github.com/pencilresearch/midi) has CC/NRPN CSVs for
+  essentially the whole Elektron line.
+- **Sample and project transfer** (not MCP) —
+  [`dagargo/elektroid`](https://github.com/dagargo/elektroid).
+
+**Adding a device here** means writing one `DeviceSpec` in `src/elektron_mcp/devices/` —
+port name, track count, parameter table, and any tools unique to the machine — not forking
+the server. PRs welcome; a Digitakt II is mostly a new parameter map.
+
+---
+
+## Development
+
+```bash
+uv sync --dev
+uv run pytest              # 62 tests, no hardware needed
+uv run ruff check .
+uv run ruff format .
+uv run ty check
+```
+
+Tests drive the real MCP surface (`call_tool`) against a recording MIDI port, so tool
+registration and schema generation are covered along with the emitted bytes.
+
+```
+src/elektron_mcp/
+  device.py      DeviceSpec + typed Parameter table
+  midi.py        connection, message sending, logging
+  clock.py       the one clock loop every playback tool shares
+  storage.py     patterns / presets / recordings on disk
+  midifile.py    .mid writing
+  server.py      build_server(spec) -> a full FastMCP server
+  devices/
+    digitakt.py  spec + trigger/trig tools
+    digitone.py  spec + FM tools
+```
+
+`scripts/hardware/` holds manual scripts that need a real device attached; they are not
+part of the test suite.
+
+---
+
+## Credits and references
+
+Built on:
+
+- [mido](https://github.com/mido/mido) and
+  [python-rtmidi](https://github.com/SpotlightKid/python-rtmidi) — MIDI I/O
+- [Model Context Protocol](https://modelcontextprotocol.io/) and the
+  [Python SDK](https://github.com/modelcontextprotocol/python-sdk)'s FastMCP
+
+Device and protocol documentation:
+
+- [Digitakt User Manual (OS 1.51)](https://www.elektron.se/wp-content/uploads/2024/09/Digitakt_User_Manual_ENG_OS1.51_231108.pdf)
+  — the CC/NRPN appendix is the source for `digitakt_cc.py`
+- [Digitone User Manual](https://www.elektron.se/support) — FM operator layout, algorithm
+  routing, and the CC/NRPN appendix behind `digitone_cc.py`
+- [midi.guide Elektron reference](https://midi.guide/d/elektron/) — cross-checking CC numbers
+- [Elektronauts](https://www.elektronauts.com/) — community threads on NRPN behaviour and
+  Elektron SysEx framing
+
+Prior art and inspiration:
+
+- [`feamster/digitakt-midi-mcp`](https://github.com/feamster/digitakt-midi-mcp) — the
+  Digitakt MCP this project started from
+- [`pencilresearch/midi`](https://github.com/pencilresearch/midi) (CC-BY-SA-4.0) — CC/NRPN
+  database covering the Elektron line, useful for cross-checking parameter maps
+- [`roomi-fields/osc-bridge`](https://github.com/roomi-fields/osc-bridge) (GPL-3.0) —
+  declarative one-file-per-device model, and a reason this repo treats devices as data
+- [`TheAndrewStaker/mcp-midi-control`](https://github.com/TheAndrewStaker/mcp-midi-control)
+  (Apache-2.0) — the "descriptors, not new tools" idea for keeping token cost flat
+- [`zerubeus/elektron-mcp`](https://github.com/ftupas/elektron-mcp) (MIT) — closest prior
+  art for Digitone parameter coverage
+- [`mzero/elk-herd`](https://github.com/mzero/elk-herd) (BSD-2-Clause) — reference for
+  Elektron SysEx pattern/project dump layout
+- [`dagargo/elektroid`](https://github.com/dagargo/elektroid) (GPL-3.0) — Elektron device
+  IDs and SysEx transfer protocol
+
+No code was copied from the GPL/AGPL projects listed above; they were read as references only.
 
 ## License
 
