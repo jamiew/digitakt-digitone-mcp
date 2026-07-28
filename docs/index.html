@@ -4,12 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Digitakt + Digitone MCP — play your Elektron hardware with an LLM</title>
-<meta name="description" content="MCP servers that let an LLM play your Elektron Digitakt and Digitone over MIDI. Trigger tracks, tweak parameters, run clock-synced patterns, export to .mid.">
-<meta property="og:title" content="Digitakt + Digitone MCP">
-<meta property="og:description" content="MCP servers that let an LLM play your Elektron Digitakt and Digitone over MIDI.">
-<meta property="og:image" content="https://jamiew.github.io/digitakt-digitone-mcp/assets/banner.jpg">
-<meta name="twitter:card" content="summary_large_image">
+<meta name="description" content="MCP servers that let an LLM play your Elektron Digitakt and Digitone over MIDI. Trigger tracks, shape FM operators, run clock-locked patterns, export to .mid.">
+
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Digitakt + Digitone MCP">
+<meta property="og:url" content="https://jamiew.github.io/digitakt-digitone-mcp/">
+<meta property="og:title" content="Digitakt + Digitone MCP">
+<meta property="og:description" content="Let an LLM play your Elektron hardware over MIDI. Trigger tracks, shape FM operators, run clock-locked patterns, export to .mid.">
+<meta property="og:image" content="https://jamiew.github.io/digitakt-digitone-mcp/assets/banner.jpg">
+<meta property="og:image:width" content="1600">
+<meta property="og:image:height" content="469">
+<meta property="og:image:alt" content="Two matte-black instruments facing each other in the dark, orange and turquoise threads of light arcing between them">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Digitakt + Digitone MCP">
+<meta name="twitter:description" content="Let an LLM play your Elektron hardware over MIDI.">
+<meta name="twitter:image" content="https://jamiew.github.io/digitakt-digitone-mcp/assets/banner.jpg">
+
+<link rel="canonical" href="https://jamiew.github.io/digitakt-digitone-mcp/">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23000'/><rect x='4' y='13' width='6' height='6' rx='1.5' fill='%23FFB000'/><rect x='13' y='13' width='6' height='6' rx='1.5' fill='%233a3a3a'/><rect x='22' y='13' width='6' height='6' rx='1.5' fill='%233a3a3a'/></svg>">
 <style>
@@ -21,7 +33,11 @@
   --line-hi:#33333a;
   --text:#ececea;
   --muted:#8a8a86;
+  /* Amber is the shared thing — both machines have an amber OLED. The two
+     accents are each device's own FUNC button colour. */
   --amber:#ffb000;
+  --dt-orange:#f07a1a;
+  --dn-turquoise:#16bdb2;
   --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
   --sans:"Helvetica Neue",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
   --pad:clamp(20px,5vw,28px);
@@ -46,13 +62,6 @@ a:hover{text-decoration:underline}
 :focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:2px}
 .wrap{max-width:940px;margin:0 auto;padding:0 var(--pad)}
 
-/* --- Panel-legend type: the silkscreened labels on Elektron hardware ------ */
-.legend{
-  font-family:var(--mono);
-  font-size:10px;letter-spacing:.26em;text-transform:uppercase;
-  color:var(--muted);margin:0 0 16px;font-weight:500;
-}
-.legend .tick{color:var(--amber);margin-right:10px}
 
 h1{
   font-size:clamp(40px,8.2vw,84px);line-height:.94;margin:0 0 22px;
@@ -87,7 +96,7 @@ header::after{
 
 /* ------------------------------------------------- signature: the trig row */
 .seqbox{margin:0 0 34px;max-width:620px}
-.seq{display:grid;grid-template-columns:repeat(16,1fr);gap:5px;margin:0 0 10px}
+.seq{display:grid;grid-template-columns:repeat(16,1fr);gap:5px}
 .trig{
   appearance:none;-webkit-appearance:none;
   aspect-ratio:1;width:100%;padding:0;
@@ -101,10 +110,6 @@ header::after{
 .trig.play{
   background:var(--amber);border-color:var(--amber);
   box-shadow:0 0 14px rgba(255,176,0,.5),inset 0 1px 0 rgba(255,255,255,.45);
-}
-.seqhint{
-  font-family:var(--mono);font-size:10px;letter-spacing:.18em;
-  text-transform:uppercase;color:#6e6e6a;margin:0;
 }
 @media (prefers-reduced-motion:reduce){.trig.play{box-shadow:none}}
 
@@ -125,44 +130,40 @@ code,kbd{font-family:var(--mono)}
 section{padding:clamp(52px,8vw,80px) 0;border-bottom:1px solid var(--line)}
 .devices{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .device{
-  position:relative;overflow:hidden;border-radius:10px;padding:28px;
+  --accent:var(--amber);
+  position:relative;overflow:hidden;border-radius:10px;
   background:linear-gradient(180deg,var(--panel-hi),var(--panel));
   border:1px solid var(--line);
+  border-top:2px solid var(--accent);
 }
-.device::before{
+.device.dt{--accent:var(--dt-orange)}
+.device.dn{--accent:var(--dn-turquoise)}
+
+.device .shot{
+  /* height:auto is required — the width/height attributes otherwise win over
+     aspect-ratio and the image renders at its full intrinsic height. */
+  display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;
+  background:#0a0a0b;border-bottom:1px solid var(--line);
+}
+.device .body{position:relative;padding:26px 28px 30px}
+.device .body::before{
   content:"";position:absolute;inset:0;pointer-events:none;
-  background:url("assets/grid-emboss.jpg") center/170% no-repeat;opacity:.10;
+  background:url("assets/grid-emboss.jpg") center/180% no-repeat;opacity:.07;
 }
-.device > *{position:relative}
-.device .meta{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin:0 0 14px}
-.device p{color:#adada9;font-size:15px;margin:0 0 16px}
-.device ul{margin:0;padding-left:17px;color:var(--muted);font-size:14px}
-.device li{margin-bottom:6px}
+.device .body > *{position:relative}
+.device .meta{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+.device h3{margin-bottom:8px}
+.device .sub{color:#adada9;font-size:15px;margin:0 0 20px}
+.device h4{
+  font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--accent);font-weight:500;margin:22px 0 10px;
+  padding-bottom:8px;border-bottom:1px solid var(--line);
+}
+.device h4:first-of-type{margin-top:0}
+.device ul{margin:0;padding-left:16px;color:var(--muted);font-size:14px}
+.device li{margin-bottom:7px}
 .device li strong{color:#cdcdc8;font-weight:600}
-
-.knobs{display:flex;gap:12px;margin:0 0 22px}
-.knob{
-  width:32px;height:32px;border-radius:50%;flex:none;position:relative;
-  background:radial-gradient(circle at 38% 30%,#3c3c40,#111113 70%);
-  border:1px solid #2e2e33;
-  box-shadow:0 2px 6px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.08);
-}
-.knob::after{
-  content:"";position:absolute;left:50%;top:4px;width:2px;height:9px;
-  border-radius:1px;background:var(--amber);opacity:.9;
-  transform-origin:50% 12px;transform:translateX(-50%) rotate(var(--r,0deg));
-}
-
-.specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.spec{background:var(--panel);padding:22px 20px}
-.spec .n{font-family:var(--mono);font-size:27px;font-weight:600;letter-spacing:-.02em;color:var(--amber);line-height:1}
-.spec .l{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:8px}
-
-/* Four items in a 2x2 grid so the labels line up across rows. */
-.cols{display:grid;grid-template-columns:1fr 1fr;gap:30px 44px}
-.cols h4{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin:0 0 8px;font-weight:500}
-.cols p{margin:0;color:var(--muted);font-size:14.5px}
-.cols code{color:#c6c6c2;font-size:13px}
+.device code{color:#c6c6c2;font-size:12.5px}
 
 .warn{border-left:2px solid var(--amber);padding:3px 0 3px 18px;color:#adada9;font-size:15px;margin:0 0 30px;max-width:64ch}
 .btns{display:flex;gap:11px;flex-wrap:wrap;margin-top:6px}
@@ -185,7 +186,6 @@ footer p{margin:0 0 10px}
 
 <header>
   <div class="wrap hero-inner">
-    <p class="legend"><span class="tick">●</span>Model Context Protocol · MIDI</p>
     <h1>Digitakt +<br>Digitone <span class="amber">MCP</span></h1>
     <p class="lede">
       Let an LLM play your hardware. Trigger tracks, sculpt FM operators, run
@@ -195,7 +195,6 @@ footer p{margin:0 0 10px}
 
     <div class="seqbox">
       <div class="seq" id="seq" role="group" aria-label="Demonstration step sequencer"></div>
-      <p class="seqhint">16 steps · tap to edit</p>
     </div>
 
     <div class="cmd"><span class="p">$ </span>git clone https://github.com/jamiew/digitakt-digitone-mcp
@@ -212,81 +211,83 @@ footer p{margin:0 0 10px}
 
 <section>
   <div class="wrap">
-    <h2>Two machines · two servers</h2>
     <p class="warn">
       Built for the <strong>original</strong> Digitakt and Digitone — not the II
-      models. The mk2 machines have different parameter maps, and pointing the wrong
-      map at your hardware puts values in the wrong place, silently.
+      models, whose parameter maps differ enough that the wrong one puts values in the
+      wrong place, silently. For a Digitakt II, use
+      <a href="https://github.com/feamster/digitakt-midi-mcp">feamster/digitakt-midi-mcp</a>,
+      the project this one grew out of.
     </p>
     <div class="devices">
 
-      <div class="device">
-        <div class="knobs"><i class="knob" style="--r:-32deg"></i><i class="knob" style="--r:54deg"></i><i class="knob" style="--r:118deg"></i><i class="knob" style="--r:12deg"></i></div>
-        <p class="meta">digitakt-mcp · 44 tools</p>
-        <h3>Digitakt</h3>
-        <p>Eight sample tracks, eight MIDI tracks, one LFO, no chorus.</p>
-        <ul>
-          <li><strong>Trigger tracks</strong> by number — notes 0–7 handled for you</li>
-          <li><strong>Edit trigs</strong> — note, velocity and length per step over NRPN</li>
-          <li><strong>Drive drums and a synth</strong> together across channels 1–16</li>
-          <li><strong>Volume CC 7, Pan CC 10</strong> — the mk1 map, not the II's</li>
-        </ul>
+      <div class="device dt">
+        <img class="shot" src="assets/device-digitakt.jpg" width="1100" height="687" loading="lazy"
+             alt="A matte-black desktop sampler in the dark, its display glowing amber and a single orange button at the left of the pad grid">
+        <div class="body">
+          <p class="meta">digitakt-mcp · 44 tools</p>
+          <h3>Digitakt</h3>
+          <p class="sub">Eight sample tracks, eight MIDI tracks, one LFO, no chorus.</p>
+
+          <h4>Drums</h4>
+          <ul>
+            <li><strong>Trigger any track</strong> by number — notes 0–7 handled for you</li>
+            <li><strong>Edit trigs over NRPN</strong> — note, velocity and length, per step</li>
+            <li><strong>Flatten a track's velocities</strong> in one call</li>
+            <li><strong>Play chromatically</strong> on the active track, notes 12–84</li>
+          </ul>
+
+          <h4>Sequencing</h4>
+          <ul>
+            <li><strong>Clock-locked patterns</strong> — drums, melody, or both at once</li>
+            <li><strong>Drums and synths together</strong> across channels 1–16</li>
+            <li><strong>Count-in and delayed starts</strong> for recording takes</li>
+            <li><strong>Looping patterns</strong> that repeat for the whole run</li>
+          </ul>
+
+          <h4>Sound</h4>
+          <ul>
+            <li><strong>67 named parameters</strong> over CC and NRPN</li>
+            <li><strong>Filter, amp, LFO, delay, reverb</strong> by name, not CC number</li>
+            <li><strong>Sweeps and ADSR envelopes</strong> on any CC parameter</li>
+            <li><code>volume</code> is CC 7, <code>pan</code> is CC 10 — the mk1 map</li>
+          </ul>
+        </div>
       </div>
 
-      <div class="device">
-        <div class="knobs"><i class="knob" style="--r:96deg"></i><i class="knob" style="--r:-18deg"></i><i class="knob" style="--r:140deg"></i><i class="knob" style="--r:38deg"></i></div>
-        <p class="meta">digitone-mcp · 43 tools</p>
-        <h3>Digitone</h3>
-        <p>Four FM tracks, eight shared voices, two LFOs, chorus on the FX channel.</p>
-        <ul>
-          <li><strong>Play chords</strong> — tracks are polyphonic, so use the voices</li>
-          <li><strong>Set the algorithm</strong> 1–8, get the routing back in words</li>
-          <li><strong>Shape operators</strong> — ratios, levels, FM-specific end levels</li>
-          <li><strong>Chorus, delay, reverb</strong> on the FX channel</li>
-        </ul>
+      <div class="device dn">
+        <img class="shot" src="assets/device-digitone.jpg" width="1100" height="687" loading="lazy"
+             alt="A matte-black desktop FM synthesizer in the dark, its display glowing amber, with a turquoise button and a row of white keys">
+        <div class="body">
+          <p class="meta">digitone-mcp · 43 tools</p>
+          <h3>Digitone</h3>
+          <p class="sub">Four FM tracks, eight shared voices, two LFOs, chorus on the FX channel.</p>
+
+          <h4>FM</h4>
+          <ul>
+            <li><strong>Pick an algorithm</strong> 1–8 and get the operator routing back in words</li>
+            <li><strong>Set operator ratios</strong> — C, A and the B pair</li>
+            <li><strong>Drive modulation depth</strong> per operator for brightness</li>
+            <li><strong>Operator envelopes</strong> with the FM-specific end level</li>
+          </ul>
+
+          <h4>Playing</h4>
+          <ul>
+            <li><strong>Chords</strong> — tracks are polyphonic, eight voices to share</li>
+            <li><strong>Clock-locked melodies</strong> and looping phrases</li>
+            <li><strong>Four tracks at once</strong> on channels 1–4</li>
+            <li><strong>Melody plus drums</strong> when both servers run together</li>
+          </ul>
+
+          <h4>Sound</h4>
+          <ul>
+            <li><strong>100 named parameters</strong> over CC and NRPN</li>
+            <li><strong>Chorus, delay and reverb</strong> on the FX channel</li>
+            <li><strong>Two LFOs per track</strong>, unlike the Digitakt's one</li>
+            <li><code>filter_cutoff</code> is CC 23 here, not CC 74</li>
+          </ul>
+        </div>
       </div>
 
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <h2>By the numbers</h2>
-    <div class="specs">
-      <div class="spec"><div class="n">2</div><div class="l">Devices</div></div>
-      <div class="spec"><div class="n">35</div><div class="l">Shared tools</div></div>
-      <div class="spec"><div class="n">167</div><div class="l">Parameters</div></div>
-      <div class="spec"><div class="n">62</div><div class="l">Tests</div></div>
-      <div class="spec"><div class="n">~5k</div><div class="l">Tokens / server</div></div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <h2>What it can do</h2>
-    <div class="cols">
-      <div class="col">
-        <h4>Play</h4>
-        <p>Notes, chords, sequences and full patterns locked to real MIDI clock, so the
-        device's own sequencer stays in step with whatever the model plays.</p>
-      </div>
-      <div class="col">
-        <h4>Keep</h4>
-        <p>Save patterns and automation presets as JSON, edit them in place, and export
-        anything to a standard <code>.mid</code> file.</p>
-      </div>
-      <div class="col">
-        <h4>Shape</h4>
-        <p>Named parameters — <code>filter_cutoff</code>, <code>lfo_speed</code>,
-        <code>delay_time</code> — over CC or NRPN, with sweeps and ADSR envelopes.</p>
-      </div>
-      <div class="col">
-        <h4>Listen</h4>
-        <p>Monitor and record incoming MIDI, so a jam on the hardware comes back as a
-        file the model can read.</p>
-      </div>
     </div>
   </div>
 </section>

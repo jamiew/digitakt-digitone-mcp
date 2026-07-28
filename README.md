@@ -1,6 +1,6 @@
 <p align="center">
   <img src="docs/assets/banner.jpg" width="100%"
-       alt="Two matte-black hardware instruments seen from above, their pads and displays glowing amber, joined by a single thread of amber light running between them">
+       alt="Two matte-black hardware instruments facing each other in the dark, displays glowing amber, with orange and turquoise threads of light arcing between them and blending in the middle">
 </p>
 
 # Digitakt + Digitone MCP
