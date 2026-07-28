@@ -260,9 +260,10 @@ We hold every commit from that repo; it has none we lack, and has been dormant s
 December 2025. There is nothing left to merge in either direction — the codebases no
 longer resemble each other.
 
-One fix here does apply cleanly upstream, and has been offered back: scheduled note-off
-tasks are created without keeping a reference, and asyncio holds only weak references to
-tasks, so a note-off can be garbage-collected before it fires and leave a stuck note.
+One fix here would still apply cleanly upstream: scheduled note-off tasks are created
+without keeping a reference, and asyncio holds only weak references to tasks, so a
+note-off can be garbage-collected before it fires and leave a stuck note. That pattern
+appears seven times in their `server.py`.
 
 ---
 
