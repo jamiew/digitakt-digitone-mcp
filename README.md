@@ -233,6 +233,39 @@ the server. PRs welcome; a Digitakt II is mostly a new parameter map.
 
 ---
 
+## Relationship to the original
+
+This started as a fork of [`feamster/digitakt-midi-mcp`](https://github.com/feamster/digitakt-midi-mcp)
+and has diverged far enough to be a different project. Credit where it's due — that repo
+is where the Digitakt parameter tables and the first working tool set came from.
+
+**The most important difference: that project targets the Digitakt II, this one targets
+the original Digitakt.** They are genuinely different machines over MIDI. Its CC map
+expects AMP Volume on **CC 89** and Pan on **CC 90**; the original Digitakt uses **CC 7**
+and **CC 10**. Its parameter set also assumes amp sustain/release stages and a chorus send
+that the mk1 simply doesn't have. Point the wrong one at your hardware and parameters land
+in the wrong place, silently.
+
+| | `feamster/digitakt-midi-mcp` | this project |
+|---|---|---|
+| Target hardware | Digitakt II | Digitakt (original) + Digitone (original) |
+| Devices | 1 | 2, each an independent server |
+| Structure | one 4,000-line `server.py` | `src/elektron_mcp/` package, devices as data |
+| MCP API | low-level `mcp.server.Server` | FastMCP |
+| Tests | hardware scripts only | 62 tests, no hardware needed |
+| CI / types / packaging | — | GitHub Actions, `ty`, `py.typed`, wheel build |
+| License | none | MIT |
+
+We hold every commit from that repo; it has none we lack, and has been dormant since
+December 2025. There is nothing left to merge in either direction — the codebases no
+longer resemble each other.
+
+One fix here does apply cleanly upstream, and has been offered back: scheduled note-off
+tasks are created without keeping a reference, and asyncio holds only weak references to
+tasks, so a note-off can be garbage-collected before it fires and leave a stuck note.
+
+---
+
 ## Development
 
 ```bash
@@ -286,7 +319,8 @@ Device and protocol documentation:
 Prior art and inspiration:
 
 - [`feamster/digitakt-midi-mcp`](https://github.com/feamster/digitakt-midi-mcp) — the
-  Digitakt MCP this project started from
+  Digitakt MCP this project started from; see
+  [Relationship to the original](#relationship-to-the-original)
 - [`pencilresearch/midi`](https://github.com/pencilresearch/midi) (CC-BY-SA-4.0) — CC/NRPN
   database covering the Elektron line, useful for cross-checking parameter maps
 - [`roomi-fields/osc-bridge`](https://github.com/roomi-fields/osc-bridge) (GPL-3.0) —
