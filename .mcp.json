@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "digitakt": {
+      "command": "uv",
+      "args": ["run", "--quiet", "digitakt-mcp"]
+    },
+    "digitone": {
+      "command": "uv",
+      "args": ["run", "--quiet", "digitone-mcp"]
+    }
+  }
+}
