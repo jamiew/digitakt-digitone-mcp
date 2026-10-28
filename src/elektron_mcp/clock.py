@@ -8,8 +8,9 @@ scheduled events, then run one loop", which is what this module is.
 from __future__ import annotations
 
 import asyncio
+import math
 import time
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -24,6 +25,9 @@ PULSES_PER_BAR = PULSES_PER_BEAT * 4
 """96 pulses per bar, assuming 4/4."""
 
 EventKind = Literal["note", "cc"]
+
+Progress = Callable[[int, int], Awaitable[None]]
+"""Called as `progress(bars_done, total_bars)` after each bar."""
 
 
 def pulses(beat: float) -> int:
@@ -111,6 +115,7 @@ async def play(
     send_stop: bool = True,
     send_clock: bool = True,
     start_at_beat: float = 0.0,
+    progress: Progress | None = None,
 ) -> None:
     """Run the clock for `bars` bars, firing `events` at their scheduled pulses.
 
@@ -121,6 +126,7 @@ async def play(
 
     interval = clock_interval(bpm)
     total_pulses = int(bars * PULSES_PER_BAR)
+    total_bars = math.ceil(bars)
     start_pulse = pulses(start_at_beat)
 
     one_shots = sorted((e for e in events if not e.is_looping), key=lambda e: e.pulse)
@@ -130,32 +136,46 @@ async def play(
     event_index = 0
     began_at = time.time()
 
-    for pulse_index in range(total_pulses):
-        if not started and pulse_index >= start_pulse:
-            if send_start:
-                # Song Position Pointer counts sixteenth notes, so 4 per beat.
-                if start_at_beat > 0:
-                    connection.send(mido.Message("songpos", pos=int(start_at_beat * 4)))
-                connection.send(mido.Message("start"))
-                connection.log_transport("START")
-            started = True
+    try:
+        for pulse_index in range(total_pulses):
+            if not started and pulse_index >= start_pulse:
+                if send_start:
+                    # Song Position Pointer counts sixteenth notes, so 4 per beat.
+                    if start_at_beat > 0:
+                        connection.send(mido.Message("songpos", pos=int(start_at_beat * 4)))
+                    connection.send(mido.Message("start"))
+                    connection.log_transport("START")
+                started = True
 
-        if send_clock and started:
-            connection.send(mido.Message("clock"))
+            if send_clock and started:
+                connection.send(mido.Message("clock"))
 
-        while event_index < len(one_shots) and one_shots[event_index].pulse == pulse_index:
-            _fire(connection, one_shots[event_index])
-            event_index += 1
+            # `<=` so an event before the current pulse (e.g. a negative beat) fires
+            # now instead of blocking every event after it.
+            while event_index < len(one_shots) and one_shots[event_index].pulse <= pulse_index:
+                _fire(connection, one_shots[event_index])
+                event_index += 1
 
-        for event in looping:
-            assert event.loop_pulses is not None
-            if pulse_index % event.loop_pulses == event.pulse % event.loop_pulses:
-                _fire(connection, event)
+            for event in looping:
+                assert event.loop_pulses is not None
+                if pulse_index % event.loop_pulses == event.pulse % event.loop_pulses:
+                    _fire(connection, event)
 
-        deadline = began_at + (pulse_index + 1) * interval
-        remaining = deadline - time.time()
-        if remaining > 0:
-            await asyncio.sleep(remaining)
+            deadline = began_at + (pulse_index + 1) * interval
+            remaining = deadline - time.time()
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+
+            if progress is not None and ((pulse_index + 1) % PULSES_PER_BAR == 0 or pulse_index + 1 == total_pulses):
+                # Timing is anchored to began_at, so a slow notification doesn't push later pulses back.
+                await progress(math.ceil((pulse_index + 1) / PULSES_PER_BAR), total_bars)
+    except asyncio.CancelledError:
+        # The client gave up on the call. Without a Stop the device sits mid-pattern
+        # waiting for clock that will never come.
+        if started and connection.output_port is not None:
+            connection.send(mido.Message("stop"))
+            connection.log_transport("STOP (cancelled)")
+        raise
 
     if send_stop and started:
         connection.send(mido.Message("stop"))

@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 
 import mido
+from mcp.server.mcpserver.exceptions import ToolError
 
 # mido ships no py.typed and builds its port helpers dynamically, so the type
 # checker can't see them. The `ty: ignore` comments below are all for that.
@@ -31,8 +33,8 @@ def note_name(note: int) -> str:
     return f"{NOTE_NAMES[note % 12]}{(note // 12) - 1}"
 
 
-class NotConnectedError(RuntimeError):
-    """Raised when a tool needs a port that isn't open."""
+class NotConnectedError(ToolError):
+    """Raised when a tool needs a port that isn't open. A ToolError, so the client sees the message."""
 
 
 @dataclass
@@ -44,6 +46,10 @@ class MidiConnection:
     logger: logging.Logger
     output_port: mido.ports.BaseOutput | None = None
     input_port: mido.ports.BaseInput | None = None
+    # mcp 2.x runs sync tools on worker threads, so two tools can send at once. The
+    # lock keeps a 4-message NRPN from interleaving with anything else. Reentrant
+    # because nrpn() holds it while calling send().
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -103,7 +109,9 @@ class MidiConnection:
     # ----------------------------------------------------------------- sending
 
     def send(self, message: mido.Message) -> None:
-        self.require_output().send(message)
+        port = self.require_output()
+        with self._lock:
+            port.send(message)
 
     def note_on(self, note: int, velocity: int, channel: int) -> None:
         self.send(mido.Message("note_on", note=note, velocity=velocity, channel=channel))
@@ -116,10 +124,11 @@ class MidiConnection:
 
     def nrpn(self, msb: int, lsb: int, value: int, channel: int, data_lsb: int = 0) -> None:
         """Send a 4-message NRPN. `data_lsb` carries the low 7 bits of 14-bit values."""
-        self.cc(CC_NRPN_MSB, msb, channel)
-        self.cc(CC_NRPN_LSB, lsb, channel)
-        self.cc(CC_DATA_ENTRY_MSB, value, channel)
-        self.cc(CC_DATA_ENTRY_LSB, data_lsb, channel)
+        with self._lock:
+            self.cc(CC_NRPN_MSB, msb, channel)
+            self.cc(CC_NRPN_LSB, lsb, channel)
+            self.cc(CC_DATA_ENTRY_MSB, value, channel)
+            self.cc(CC_DATA_ENTRY_LSB, data_lsb, channel)
 
     def nrpn_14bit(self, msb: int, lsb: int, value: int, channel: int) -> None:
         """Send a 14-bit NRPN value (0-16383), split across data entry MSB/LSB."""
@@ -128,7 +137,7 @@ class MidiConnection:
     async def note_off_after(self, note: int, duration: float, channel: int) -> None:
         await asyncio.sleep(duration)
         if self.output_port is not None:
-            self.output_port.send(mido.Message("note_off", note=note, velocity=0, channel=channel))
+            self.send(mido.Message("note_off", note=note, velocity=0, channel=channel))
 
     # ----------------------------------------------------------------- logging
 

@@ -5,23 +5,27 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 
 ## Quick Reference
 
-- **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp`
-- **Tests**: `uv run pytest` (62 tests, no hardware needed)
+- **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
+- **Tests**: `uv run pytest` (71 tests, no hardware needed)
 - **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check`
+- **Live harness**: `uv run python -m harness <digitakt|digitone> [chat|test|call]`, `--dry-run` for no hardware
 - **Hardware scripts**: `scripts/hardware/` — manual, need a real device, not collected by pytest
+- **Samples / +Drive / kit bootstrapping**: not in the MCP yet. Use the `elektron-bridge`
+  skill (`.claude/skills/elektron-bridge/SKILL.md`), which drives `elektroid-cli`
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/elektron_mcp/server.py` | `build_server(spec)` + the 35 shared tools |
+| `src/elektron_mcp/server.py` | `build_server(spec)` + the 37 shared tools |
 | `src/elektron_mcp/device.py` | `DeviceSpec`, typed `Parameter`, `parse_parameters` |
 | `src/elektron_mcp/midi.py` | `MidiConnection` — ports, sending, logging |
 | `src/elektron_mcp/clock.py` | `Event` + `play()`; the one clock loop |
-| `src/elektron_mcp/devices/digitakt.py` | Digitakt spec + its 9 device-specific tools |
+| `src/elektron_mcp/devices/digitakt.py` | Digitakt spec + its 7 device-specific tools |
 | `src/elektron_mcp/devices/digitone.py` | Digitone spec + its 6 FM tools |
 | `src/elektron_mcp/devices/*_params.py` | Parameter tables (data) |
 | `src/elektron_mcp/devices/*_cc.py` | CC/NRPN constants (data) |
+| `harness/` | Live LLM harness: Anthropic/OpenAI/OpenRouter adapters, scenarios, CLI |
 | `PLAN.md` | Status, TODO, architecture notes |
 
 ## Conventions
@@ -30,9 +34,15 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
   server. Don't add device-specific branching to `server.py`; use the `register_tools` hook.
 - **No module-level MIDI globals.** Everything goes through `DeviceServer.connection`.
   Globals are what forced the original two servers to be copy-pasted.
-- **Tools raise on failure** rather than returning `"Error: ..."` strings — FastMCP turns
-  exceptions into proper MCP tool errors.
-- `mcp` is pinned `<2`: 2.x dropped `mcp.server.fastmcp`.
+- **Tools raise `ToolError` on failure** (`mcp.server.mcpserver.exceptions`). mcp 2.x
+  replaces the text of any other exception with "Error executing tool X", so a
+  `ValueError` reaches the model with no explanation. `NotConnectedError` is a ToolError.
+- **Describe params with `Field`**: `Annotated[int, Field(ge=0, le=127, description=...)]`.
+  A bare string in `Annotated[int, "text"]` is silently dropped from the schema. Reuse the
+  aliases in `server.py` (`Channel`, `Velocity`, `Row`, ...). Type list items: OpenAI
+  rejects untyped arrays. `tests/test_server.py::TestSchema` enforces both.
+- **Every tool picks an annotation preset** (`PLAYS`, `SETS`, `LISTENS`, `READS`, `WRITES`).
+- Sync tools run on worker threads in mcp 2.x; `MidiConnection` locks around sends and NRPNs.
 
 ## Digitakt MIDI Basics
 
@@ -61,15 +71,15 @@ Each track listens on its own MIDI channel (1-8) when configured correctly:
 
 ## Testing
 
-Hardware tests require connected Digitakt. Unit tests mock MIDI:
+Unit tests drive an in-process `mcp.client.Client` against a recording port, so no
+hardware is needed:
 
 ```bash
-# Unit tests only (no hardware)
-uv run pytest tests/test_fastmcp_migration.py -v
-
-# All tests (needs Digitakt connected)
 uv run pytest
 ```
+
+With a device on USB and an API key set, `uv run python -m harness digitakt test` runs the
+LLM scenario suite against the real server. `call` runs single tools with no key.
 
 ## Data Storage
 
@@ -80,7 +90,10 @@ All user data in `~/.mcp-config/digitakt/`:
 
 ## Token Budget
 
-This MCP uses ~4,700 tokens for tool schemas. Keep under 6,000 for good performance. When compressing docstrings, aim for <100 tokens per tool.
+Model-facing tool schemas (name + description + input schema) are ~6.3k tokens per server
+by a chars/4 estimate, now that parameter descriptions actually reach the schema. Keep
+under ~6.5k. `ElektronMCPServer.list_tools` strips pydantic's auto titles (~1k tokens).
+When compressing docstrings, aim for <100 tokens per tool.
 
 ---
 
