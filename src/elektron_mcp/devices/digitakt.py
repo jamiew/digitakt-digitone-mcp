@@ -10,13 +10,30 @@ Quirks that distinguish it from the Digitakt II:
 import asyncio
 from typing import Annotated
 
+from mcp.server.mcpserver import Context
+from pydantic import Field
+
 from elektron_mcp import clock
 from elektron_mcp.clock import note_event
 from elektron_mcp.device import DeviceSpec, parse_parameters
 from elektron_mcp.devices.digitakt_cc import get_param_name
 from elektron_mcp.devices.digitakt_params import PARAMETER_MAP, get_parameters_by_category
 from elektron_mcp.midi import note_name
-from elektron_mcp.server import DeviceServer, build_server
+from elektron_mcp.server import (
+    PLAYS,
+    SETS,
+    Bars,
+    Bpm,
+    Channel,
+    DeviceServer,
+    MidiValue,
+    Note,
+    Row,
+    SendStop,
+    Velocity,
+    bar_progress,
+    build_server,
+)
 
 TRACK_COUNT = 8
 
@@ -25,6 +42,10 @@ TRIG_NOTE_MSB = 3
 TRIG_VELOCITY_MSB = 4
 TRIG_LENGTH_MSB = 5
 
+Track = Annotated[int, Field(ge=1, le=TRACK_COUNT, description=f"Track number (1-{TRACK_COUNT}).")]
+Step = Annotated[int, Field(ge=1, le=64, description="Step number (1-64).")]
+TrigChannel = Annotated[int, Field(ge=0, le=16, description="MIDI channel. 0 uses the track's own channel.")]
+
 
 def register_tools(device: DeviceServer) -> None:
     """Add the tools that only make sense on a sample-triggering Digitakt."""
@@ -32,12 +53,12 @@ def register_tools(device: DeviceServer) -> None:
 
     # ---------------------------------------------------------------- triggers
 
-    @device.tool
+    @device.tool(PLAYS)
     async def trigger_track(
-        track: Annotated[int, f"Track number (1-{TRACK_COUNT})."],
-        velocity: Annotated[int, "Note velocity (1-127)."] = 100,
-        duration: Annotated[float, "How long to hold the note, in seconds."] = 0.1,
-        channel: Annotated[int, "MIDI channel (1-16). Default is the AUTO channel."] = 1,
+        track: Track,
+        velocity: Velocity = 100,
+        duration: Annotated[float, Field(ge=0, le=30, description="Seconds to hold the note.")] = 0.1,
+        channel: Annotated[Channel, Field(description="MIDI channel. Default is the AUTO channel.")] = 1,
     ) -> str:
         """Fire a one-shot sample on a Digitakt track.
 
@@ -62,45 +83,45 @@ def register_tools(device: DeviceServer) -> None:
         connection.nrpn(msb, step - 1, value, ch)
         connection.log_nrpn(msb, step - 1, value, ch, f"Trig {step} {label}")
 
-    @device.tool
+    @device.tool(SETS)
     def set_trig_note(
-        track: Annotated[int, f"Track number (1-{TRACK_COUNT})."],
-        step: Annotated[int, "Step number (1-64)."],
-        note: Annotated[int, "MIDI note number (0-127). 60 = C4."],
-        channel: Annotated[int, "MIDI channel (1-16). 0 uses the track's own channel."] = 0,
+        track: Track,
+        step: Step,
+        note: Note,
+        channel: TrigChannel = 0,
     ) -> str:
         """Set which note a sequencer step plays."""
         _set_trig(TRIG_NOTE_MSB, track, step, note, channel, "Note")
         return f"Set Track {track} Step {step} note to {note} ({note_name(note)})"
 
-    @device.tool
+    @device.tool(SETS)
     def set_trig_velocity(
-        track: Annotated[int, f"Track number (1-{TRACK_COUNT})."],
-        step: Annotated[int, "Step number (1-64)."],
-        velocity: Annotated[int, "Velocity (0-127). 0 = accent off, 127 = full accent."],
-        channel: Annotated[int, "MIDI channel (1-16). 0 uses the track's own channel."] = 0,
+        track: Track,
+        step: Step,
+        velocity: Annotated[MidiValue, Field(description="Velocity. 0 = accent off, 127 = full accent.")],
+        channel: TrigChannel = 0,
     ) -> str:
         """Set the velocity of a sequencer step."""
         _set_trig(TRIG_VELOCITY_MSB, track, step, velocity, channel, "Velocity")
         return f"Set Track {track} Step {step} velocity to {velocity}"
 
-    @device.tool
+    @device.tool(SETS)
     def set_trig_length(
-        track: Annotated[int, f"Track number (1-{TRACK_COUNT})."],
-        step: Annotated[int, "Step number (1-64)."],
-        length: Annotated[int, "Length (0-127). Higher is longer."],
-        channel: Annotated[int, "MIDI channel (1-16). 0 uses the track's own channel."] = 0,
+        track: Track,
+        step: Step,
+        length: Annotated[MidiValue, Field(description="Length. Higher is longer.")],
+        channel: TrigChannel = 0,
     ) -> str:
         """Set the note length of a sequencer step."""
         _set_trig(TRIG_LENGTH_MSB, track, step, length, channel, "Length")
         return f"Set Track {track} Step {step} length to {length}"
 
-    @device.tool
+    @device.tool(SETS)
     def reset_velocities(
-        track: Annotated[int, f"Track number (1-{TRACK_COUNT})."],
-        steps: Annotated[int, "How many steps to reset (1-64)."] = 16,
-        velocity: Annotated[int, "Velocity to write to every step."] = 100,
-        channel: Annotated[int, "MIDI channel (1-16). 0 uses the track's own channel."] = 0,
+        track: Track,
+        steps: Annotated[int, Field(ge=1, le=64, description="How many steps to reset.")] = 16,
+        velocity: Annotated[MidiValue, Field(description="Velocity to write to every step.")] = 100,
+        channel: TrigChannel = 0,
     ) -> str:
         """Flatten every step's velocity on a track to one value."""
         for step in range(1, steps + 1):
@@ -110,12 +131,15 @@ def register_tools(device: DeviceServer) -> None:
 
     # ---------------------------------------------------------------- playback
 
-    @device.tool
+    @device.tool(PLAYS)
     async def play_pattern_with_tracks(
-        triggers: Annotated[list, f"Triggers as [beat, track, velocity]. Track is 1-{TRACK_COUNT}."],
-        bars: Annotated[int, "Number of bars to play."] = 4,
-        bpm: Annotated[float, "Tempo in BPM."] = 120,
-        send_stop: Annotated[bool, "Send MIDI Stop at the end."] = True,
+        ctx: Context,
+        triggers: Annotated[
+            list[Row], Field(description=f"Triggers as [beat, track, velocity]. Track is 1-{TRACK_COUNT}.")
+        ],
+        bars: Bars = 4,
+        bpm: Bpm = 120,
+        send_stop: SendStop = True,
     ) -> str:
         """Play a drum pattern of track triggers, locked to MIDI clock.
 
@@ -134,19 +158,24 @@ def register_tools(device: DeviceServer) -> None:
         ]
 
         device.logger.info(f"▶️  PLAY PATTERN: {bars} bars @ {bpm} BPM, {len(triggers)} triggers")
-        await clock.play(connection, events, bars=bars, bpm=bpm, send_stop=send_stop)
+        await clock.play(connection, events, bars=bars, bpm=bpm, send_stop=send_stop, progress=bar_progress(ctx))
         return f"Played {bars} bars at {bpm} BPM with {len(triggers)} track triggers"
 
-    @device.tool
+    @device.tool(PLAYS)
     async def play_pattern_with_tracks_and_melody(
-        track_triggers: Annotated[list | None, "Triggers as [beat, track, velocity, note?]."] = None,
-        melody_notes: Annotated[list | None, "Melody as [beat, note, velocity, duration]."] = None,
-        bars: Annotated[int, "Number of bars to play."] = 4,
-        bpm: Annotated[float, "Tempo in BPM."] = 120,
-        channel: Annotated[int, "MIDI channel for the melody."] = 1,
-        midi_start_at_beat: Annotated[float, "Delay MIDI Start until this beat."] = 0,
-        preroll_bars: Annotated[int, "Bars of count-in before the melody enters."] = 0,
-        send_stop: Annotated[bool, "Send MIDI Stop at the end."] = True,
+        ctx: Context,
+        track_triggers: Annotated[
+            list[Row] | None, Field(description="Triggers as [beat, track, velocity, note?].")
+        ] = None,
+        melody_notes: Annotated[
+            list[Row] | None, Field(description="Melody as [beat, note, velocity, duration_sec].")
+        ] = None,
+        bars: Bars = 4,
+        bpm: Bpm = 120,
+        channel: Annotated[Channel, Field(description="MIDI channel for the melody.")] = 1,
+        midi_start_at_beat: Annotated[float, Field(ge=0, description="Delay MIDI Start until this beat.")] = 0,
+        preroll_bars: Annotated[int, Field(ge=0, description="Bars of count-in before the melody enters.")] = 0,
+        send_stop: SendStop = True,
     ) -> str:
         """Play drums and a melody together.
 
@@ -176,7 +205,15 @@ def register_tools(device: DeviceServer) -> None:
             for row in melody_notes
         ]
 
-        await clock.play(connection, events, bars=bars, bpm=bpm, send_stop=send_stop, start_at_beat=midi_start_at_beat)
+        await clock.play(
+            connection,
+            events,
+            bars=bars,
+            bpm=bpm,
+            send_stop=send_stop,
+            start_at_beat=midi_start_at_beat,
+            progress=bar_progress(ctx),
+        )
         return f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} triggers + {len(melody_notes)} melody notes"
 
 

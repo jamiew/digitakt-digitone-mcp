@@ -209,6 +209,10 @@ Each server also exposes three resources: `midi://ports`, `midi://<device>/statu
 `midi://<device>/parameters` (the full parameter table as JSON, so the model can look up
 names on demand instead of carrying them in every tool description).
 
+Every tool carries MCP annotations, so clients can tell a note from a change that
+overwrites a sound. Playback tools report progress once per bar, and cancelling one sends
+MIDI Stop so the device doesn't hang mid-pattern.
+
 ### Where data goes
 
 ```
@@ -269,10 +273,10 @@ Everything else that changed:
 | Target hardware | Digitakt II | Digitakt + Digitone, both originals |
 | Devices | 1 | 2, each its own server, each installable alone |
 | Structure | one 4,300-line `server.py` | `src/elektron_mcp/` package, devices as data |
-| MCP API | low-level `mcp.server.Server` | FastMCP, with resources as well as tools |
+| MCP API | low-level `mcp.server.Server` | `MCPServer` (mcp 2.x): resources, tool annotations, progress |
 | Install | `requirements.txt` | `uv` + hatchling, console scripts, wheel |
-| Python | 3.10+ | 3.11–3.13, `py.typed`, checked with `ty` |
-| Tests | hardware scripts only | 62 tests, no hardware needed |
+| Python | 3.10+ | 3.11–3.14, `py.typed`, checked with `ty` |
+| Tests | hardware scripts only | 71 tests, no hardware needed |
 | CI | — | GitHub Actions: format, lint, types, tests, build |
 | License | none | MIT |
 
@@ -285,15 +289,16 @@ they've since been corrected for the mk1.
 ## Development
 
 ```bash
-uv sync --dev
-uv run pytest              # 62 tests, no hardware needed
+uv sync
+uv run pytest              # 71 tests, no hardware needed
 uv run ruff check .
 uv run ruff format .
 uv run ty check
 ```
 
-Tests drive the real MCP surface (`call_tool`) against a recording MIDI port, so tool
-registration and schema generation are covered along with the emitted bytes.
+Tests drive the real MCP surface (an in-process `mcp.client.Client`) against a recording
+MIDI port, so tool registration, schema validation and error text are covered along with
+the emitted bytes.
 
 ```
 src/elektron_mcp/
@@ -302,7 +307,7 @@ src/elektron_mcp/
   clock.py       the one clock loop every playback tool shares
   storage.py     patterns / presets / recordings on disk
   midifile.py    .mid writing
-  server.py      build_server(spec) -> a full FastMCP server
+  server.py      build_server(spec) -> a full MCPServer
   devices/
     digitakt.py  spec + trigger/trig tools
     digitone.py  spec + FM tools
@@ -320,7 +325,7 @@ Built on:
 - [mido](https://github.com/mido/mido) and
   [python-rtmidi](https://github.com/SpotlightKid/python-rtmidi) — MIDI I/O
 - [Model Context Protocol](https://modelcontextprotocol.io/) and the
-  [Python SDK](https://github.com/modelcontextprotocol/python-sdk)'s FastMCP
+  [Python SDK](https://github.com/modelcontextprotocol/python-sdk)'s `MCPServer`
 
 Device and protocol documentation:
 
