@@ -12,6 +12,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
+from elektron_mcp import drive
 from elektron_mcp.device import DeviceSpec, parse_parameters
 from elektron_mcp.devices.digitone_cc import ChorusCC, Syn1CC, Syn2CC, get_param_name
 from elektron_mcp.devices.digitone_params import PARAMETER_MAP, get_parameters_by_category
@@ -197,6 +198,24 @@ def register_tools(device: DeviceServer) -> None:
         if not applied:
             return "No chorus parameters specified"
         return f"Set chorus: {', '.join(applied)} on channel {channel}"
+
+    drive.register_sound_tools(device)
+
+    @device.mcp.prompt(title="New sounds")
+    def new_sounds(
+        style: Annotated[str, Field(description="Genre or feel, e.g. 'dub techno', 'lo-fi house'.")] = "",
+    ) -> str:
+        """Build four fresh FM patches: texture, keys, bass and lead on tracks 1-4, then audition them."""
+        feel = f" for {style}" if style else ""
+        return (
+            f"Make four new Digitone sounds{feel}, one per track, with randomized values inside these ranges "
+            "(raw 0-127). Track 1 texture/pad: algorithm 5-8, amp_attack 90+, amp_release 100+, some chorus_send, "
+            "a slow deep LFO. Track 2 keys: algorithm 1-2, short op_a_decay, medium amp_decay, harmonic ratios. "
+            "Track 3 bass: algorithm 1, low fm_ratio values, high-ish op_b_level with short op_b_decay, "
+            "filter_cutoff 40-60. Track 4 lead: algorithm 2-4, a little fm_feedback, medium amp_attack, "
+            "some delay_send. Play a short phrase on each track after setting it, then tell me what you set so "
+            "I can keep or redo each one. If I'd rather start from saved sounds, list_sounds shows the pool."
+        )
 
 
 SPEC = DeviceSpec(
