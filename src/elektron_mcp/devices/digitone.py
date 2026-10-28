@@ -8,17 +8,24 @@ Quirks that distinguish it from the Digitakt:
 """
 
 import asyncio
-from typing import Annotated
+from typing import Annotated, Literal
+
+from pydantic import Field
 
 from elektron_mcp.device import DeviceSpec, parse_parameters
 from elektron_mcp.devices.digitone_cc import ChorusCC, Syn1CC, Syn2CC, get_param_name
 from elektron_mcp.devices.digitone_params import PARAMETER_MAP, get_parameters_by_category
 from elektron_mcp.midi import note_name
-from elektron_mcp.server import DeviceServer, build_server
+from elektron_mcp.server import PLAYS, SETS, Channel, DeviceServer, MidiValue, Note, Velocity, build_server
 
 TRACK_COUNT = 4
 VOICE_COUNT = 8
 FX_CHANNEL = 9
+
+TrackChannel = Annotated[
+    Channel, Field(description=f"MIDI channel. Tracks 1-{TRACK_COUNT} listen on channels 1-{TRACK_COUNT}.")
+]
+Level = MidiValue
 
 # How the four operators (C, A, B1, B2) are routed in each algorithm.
 ALGORITHM_DESCRIPTIONS = {
@@ -37,16 +44,16 @@ def register_tools(device: DeviceServer) -> None:
     """Add the FM synthesis and polyphony tools unique to the Digitone."""
     connection = device.connection
 
-    @device.tool
+    @device.tool(PLAYS)
     async def play_chord(
-        notes: Annotated[list, "MIDI note numbers, e.g. [60, 64, 67] for C major."],
-        velocity: Annotated[int, "Velocity for every note."] = 100,
-        duration: Annotated[float, "How long to hold the chord, in seconds."] = 0.5,
-        channel: Annotated[int, f"MIDI channel (1-16). Tracks 1-{TRACK_COUNT} are channels 1-{TRACK_COUNT}."] = 1,
+        notes: Annotated[list[Note], Field(min_length=1, description="MIDI notes, e.g. [60, 64, 67] for C major.")],
+        velocity: Velocity = 100,
+        duration: Annotated[float, Field(ge=0, le=30, description="Seconds to hold the chord.")] = 0.5,
+        channel: TrackChannel = 1,
     ) -> str:
         """Play simultaneous notes. The Digitone shares 8 voices across its 4 tracks."""
         ch = channel - 1
-        pitches = [int(n) for n in notes]
+        pitches = list(notes)
 
         for note in pitches:
             connection.note_on(note, velocity, ch)
@@ -60,18 +67,15 @@ def register_tools(device: DeviceServer) -> None:
         names = ", ".join(note_name(n) for n in pitches)
         return f"Played chord [{names}] vel={velocity} ch={channel} for {duration}s"
 
-    @device.tool
+    @device.tool(SETS)
     def set_algorithm(
-        algorithm: Annotated[int, "Algorithm number (1-8)."],
-        channel: Annotated[int, f"MIDI channel (1-{TRACK_COUNT})."] = 1,
+        algorithm: Annotated[int, Field(ge=1, le=8, description="Algorithm number (1-8).")],
+        channel: TrackChannel = 1,
     ) -> str:
         """Choose the FM algorithm, i.e. how the four operators modulate each other.
 
         Lower numbers are deeper modulation chains; 8 is all carriers (organ-like).
         """
-        if not 1 <= algorithm <= 8:
-            raise ValueError(f"Algorithm must be 1-8, got {algorithm}")
-
         ch = channel - 1
         value = algorithm - 1  # The CC is 0-indexed while the display is 1-indexed.
         connection.cc(Syn1CC.ALGORITHM, value, ch)
@@ -79,12 +83,12 @@ def register_tools(device: DeviceServer) -> None:
 
         return f"Set algorithm {algorithm} on channel {channel}: {ALGORITHM_DESCRIPTIONS[algorithm]}"
 
-    @device.tool
+    @device.tool(SETS)
     def set_ratios(
-        ratio_c: Annotated[int | None, "Carrier C ratio (0-127). Integer ratios set pitch."] = None,
-        ratio_a: Annotated[int | None, "Operator A ratio (0-127). Non-integer is metallic."] = None,
-        ratio_b: Annotated[int | None, "Operator B ratio (0-127). Applies to both B1 and B2."] = None,
-        channel: Annotated[int, f"MIDI channel (1-{TRACK_COUNT})."] = 1,
+        ratio_c: Annotated[Level | None, Field(description="Carrier C ratio. Integer ratios set pitch.")] = None,
+        ratio_a: Annotated[Level | None, Field(description="Operator A ratio. Non-integer is metallic.")] = None,
+        ratio_b: Annotated[Level | None, Field(description="Operator B ratio. Applies to both B1 and B2.")] = None,
+        channel: TrackChannel = 1,
     ) -> str:
         """Set operator frequency ratios.
 
@@ -110,11 +114,13 @@ def register_tools(device: DeviceServer) -> None:
             return "No ratios specified"
         return f"Set ratios {', '.join(applied)} on channel {channel}"
 
-    @device.tool
+    @device.tool(SETS)
     def set_operator_levels(
-        a_level: Annotated[int | None, "Operator A modulation depth (0-127)."] = None,
-        b_level: Annotated[int | None, "Operator B modulation depth (0-127). Applies to B1 and B2."] = None,
-        channel: Annotated[int, f"MIDI channel (1-{TRACK_COUNT})."] = 1,
+        a_level: Annotated[Level | None, Field(description="Operator A modulation depth.")] = None,
+        b_level: Annotated[
+            Level | None, Field(description="Operator B modulation depth. Applies to B1 and B2.")
+        ] = None,
+        channel: TrackChannel = 1,
     ) -> str:
         """Set modulation index per operator. Higher values are brighter and harsher."""
         ch = channel - 1
@@ -132,20 +138,17 @@ def register_tools(device: DeviceServer) -> None:
             return "No levels specified"
         return f"Set operator levels {', '.join(applied)} on channel {channel}"
 
-    @device.tool
+    @device.tool(SETS)
     def set_operator_envelope(
-        operator: Annotated[str, "'A' or 'B'. B covers both B1 and B2."],
-        attack: Annotated[int | None, "Attack time (0-127)."] = None,
-        decay: Annotated[int | None, "Decay time (0-127)."] = None,
-        end: Annotated[int | None, "End level (0-127). FM-specific: the level held after decay."] = None,
-        level: Annotated[int | None, "Peak modulation depth (0-127)."] = None,
-        channel: Annotated[int, f"MIDI channel (1-{TRACK_COUNT})."] = 1,
+        operator: Annotated[Literal["A", "B"], Field(description="B covers both B1 and B2.")],
+        attack: Annotated[Level | None, Field(description="Attack time.")] = None,
+        decay: Annotated[Level | None, Field(description="Decay time.")] = None,
+        end: Annotated[Level | None, Field(description="End level: the level held after decay.")] = None,
+        level: Annotated[Level | None, Field(description="Peak modulation depth.")] = None,
+        channel: TrackChannel = 1,
     ) -> str:
         """Shape how an operator's modulation depth changes over time."""
-        name = operator.upper()
-        if name not in ("A", "B"):
-            raise ValueError(f"operator must be 'A' or 'B', got {operator!r}")
-
+        name = operator
         ch = channel - 1
         if name == "A":
             ccs = (Syn2CC.A_ENV_ATTACK, Syn2CC.A_ENV_DECAY, Syn2CC.A_ENV_END, Syn2CC.A_LEVEL)
@@ -164,14 +167,14 @@ def register_tools(device: DeviceServer) -> None:
             return "No envelope parameters specified"
         return f"Set operator {name} envelope: {', '.join(applied)} on channel {channel}"
 
-    @device.tool
+    @device.tool(SETS)
     def set_chorus(
-        depth: Annotated[int | None, "Chorus depth (0-127)."] = None,
-        speed: Annotated[int | None, "Chorus speed (0-127)."] = None,
-        hp: Annotated[int | None, "High-pass filter (0-127)."] = None,
-        width: Annotated[int | None, "Stereo width (0-127)."] = None,
-        mix: Annotated[int | None, "Mix level (0-127)."] = None,
-        channel: Annotated[int, "FX channel."] = FX_CHANNEL,
+        depth: Annotated[Level | None, Field(description="Chorus depth.")] = None,
+        speed: Annotated[Level | None, Field(description="Chorus speed.")] = None,
+        hp: Annotated[Level | None, Field(description="High-pass filter.")] = None,
+        width: Annotated[Level | None, Field(description="Stereo width.")] = None,
+        mix: Annotated[Level | None, Field(description="Mix level.")] = None,
+        channel: Annotated[Channel, Field(description="FX channel.")] = FX_CHANNEL,
     ) -> str:
         """Set the chorus effect. The Digitakt has no chorus; this is Digitone-only."""
         ch = channel - 1

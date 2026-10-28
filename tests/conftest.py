@@ -1,13 +1,15 @@
 """Test fixtures.
 
-Tests drive the real MCP surface (`call_tool`) against a recording MIDI port, so
-they cover tool registration and schema generation as well as the message bytes.
-The only stand-in is the port itself — there's no way to assert on MIDI output
-without one, and everything above it is the real code path.
+Tests drive the real MCP surface (an in-process `mcp.client.Client`) against a
+recording MIDI port, so they cover tool registration, schema validation and error
+handling as well as the message bytes. The only stand-in is the port itself —
+there's no way to assert on MIDI output without one.
 """
 
 import mido
 import pytest
+from mcp.client import Client
+from mcp.types import TextContent, TextResourceContents
 
 from elektron_mcp.devices.digitakt import SPEC as DIGITAKT_SPEC
 from elektron_mcp.devices.digitone import SPEC as DIGITONE_SPEC
@@ -50,6 +52,10 @@ class RecordingPort:
         return [(m.control, m.value) for m in self.of_type("control_change")]
 
 
+class ToolError(Exception):
+    """A tool call came back with isError set; the message is the tool's text."""
+
+
 class Harness:
     """A built server plus its recording port."""
 
@@ -57,20 +63,26 @@ class Harness:
         self.device = device
         self.port = port
 
-    async def call(self, tool: str, **arguments):
+    async def call(self, tool: str, **arguments) -> str:
         """Invoke a tool the way a client would, returning its text output."""
-        result = await self.device.mcp.call_tool(tool, arguments)
-        blocks = result[0] if isinstance(result, tuple) else result
-        if isinstance(blocks, dict):
-            return blocks
-        return "\n".join(getattr(b, "text", "") for b in blocks)
+        async with Client(self.device.mcp) as client:
+            result = await client.call_tool(tool, arguments)
+        text = "\n".join(block.text for block in result.content if isinstance(block, TextContent))
+        if result.is_error:
+            raise ToolError(text)
+        return text
 
     async def read(self, uri: str) -> str:
-        contents = await self.device.mcp.read_resource(uri)
-        return "\n".join(c.content for c in contents)
+        async with Client(self.device.mcp) as client:
+            result = await client.read_resource(uri)
+        return "\n".join(c.text for c in result.contents if isinstance(c, TextResourceContents))
+
+    async def tools(self):
+        async with Client(self.device.mcp) as client:
+            return (await client.list_tools()).tools
 
     async def tool_names(self) -> set[str]:
-        return {t.name for t in await self.device.mcp.list_tools()}
+        return {t.name for t in await self.tools()}
 
 
 def build(spec, tmp_path) -> Harness:

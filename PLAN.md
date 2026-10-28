@@ -7,15 +7,15 @@ FastMCP server from a `DeviceSpec`; each device ships its own console script so 
 cost stays per-device. Digitakt and Digitone are supported; both are on the original
 hardware, not the mk2 machines.
 
-Green: `ruff check`, `ruff format --check`, `ty check`, 62 tests, wheel builds and
-imports from an isolated install.
+Green: `ruff check`, `ruff format --check`, `ty check`, 71 tests, wheel builds and
+imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-07-28.
 
 | | |
 |---|---|
-| Devices | Digitakt (44 tools, ~5.2k tokens), Digitone (43 tools, ~5.1k tokens) |
+| Devices | Digitakt (44 tools, ~6.3k tokens), Digitone (43 tools, ~6.2k tokens) |
 | Entry points | `digitakt-mcp`, `digitone-mcp` |
-| Python | 3.11–3.13 |
-| Tests | 62, no hardware required |
+| Python | 3.11–3.14 |
+| Tests | 71, no hardware required |
 
 ## Architecture
 
@@ -26,9 +26,9 @@ src/elektron_mcp/
   clock.py       Event + play(); the single clock loop
   storage.py     ~/.mcp-config/<slug>/{patterns,presets,recordings}
   midifile.py    .mid writing
-  server.py      build_server(spec) + all 35 shared tools
+  server.py      build_server(spec) + all 37 shared tools
   devices/
-    digitakt.py         SPEC + 9 device tools
+    digitakt.py         SPEC + 7 device tools
     digitone.py         SPEC + 6 FM tools
     *_params.py         parameter tables (data)
     *_cc.py             CC/NRPN constants (data)
@@ -55,9 +55,30 @@ new parameter map.
 - [x] Typed `Parameter` table with validation at import (`parse_parameters`)
 - [x] Type checking with `ty`, plus `py.typed`
 - [x] Rewrite tests against the real MCP surface (`call_tool`), parameterized over devices
-- [x] CI: lint + format + types, tests on 3.11/3.12/3.13, wheel build and import check
-- [x] Pin `mcp>=1.26.0,<2` — see below
+- [x] CI: lint + format + types, tests on 3.11–3.14, wheel build and import check
+- [x] Pin `mcp>=1.26.0,<2` — superseded by the 2.x migration below
 - [x] `midi://<device>/parameters` resource so parameter names needn't live in tool text
+- [x] **mcp 2.x migration** to `MCPServer` (see below for what it changed)
+
+### MCP protocol audit (Oct 2026)
+
+| Feature | Before | Now |
+|---|---|---|
+| Tool parameter docs | **Dropped.** `Annotated[int, "text"]` isn't read by pydantic, so no parameter had a description; row formats like `[beat, note, velocity, duration]` never reached the model | `Field(description=..., ge=, le=)`, enforced by a schema test |
+| Array schemas | Bare `list` → `{"type": "array"}` with no items, which OpenAI rejects | Typed rows (`list[list[number]]`) |
+| Tool errors | Raised `ValueError` etc. On mcp 2.x these reach the client as just "Error executing tool X" | `ToolError`, so the model sees "Unknown parameter 'x'. Use list_parameters…" |
+| Output schema | Auto `{"result": string}` on every tool, duplicating each result as structured content | Off (`structured_output=False`); results are text |
+| Tool annotations | None | Every tool: read-only / destructive / idempotent / open-world hints |
+| Server identity | Name only | `title`, `version`, and `instructions` (channels, beats, where parameters live) |
+| Progress | None | Clock-driven tools report each bar |
+| Cancellation | Device left mid-pattern | Cancelled playback sends MIDI Stop |
+| Resources | 3, no mime types | Same 3, JSON ones marked `application/json` |
+| Prompts, completions, elicitation, sampling, logging | Unused | Still unused. Sampling, roots and logging are deprecated in the 2026-07-28 spec; elicitation could confirm `delete_pattern` but annotations already let clients ask |
+
+Also fixed while migrating: `play_midi_file` used `MidiFile.play()`, which blocks the
+event loop for the whole file; sync tools now run on worker threads, so `MidiConnection`
+locks around sends to keep NRPN sequences whole; an event before pulse 0 used to stall
+every later event in `clock.play`.
 
 ### Bugs found and fixed during the refactor
 
@@ -94,9 +115,10 @@ a Digitakt II spec ever lands, where its expectations become correct).
 
 ### High priority
 
-- [ ] **Verify on real hardware.** The refactor is covered by unit tests but no Digitakt
-      or Digitone has been touched since. Highest-risk areas: clock timing under the
-      unified `clock.play()`, the looping-event modulo path, and `start_at_beat`.
+- [ ] **Verify on real hardware.** Partly done on a Digitakt over USB (Oct 2026): stdio
+      server connects, `trigger_track` and a 2-bar `play_pattern_with_tracks` play, progress
+      arrives per bar, and cancelling `play_with_clock` mid-run sends Stop. Not yet heard:
+      the looping-event modulo path, `start_at_beat`, and anything on a Digitone.
 - [ ] **Generate parameter maps from [`pencilresearch/midi`](https://github.com/pencilresearch/midi)**
       instead of maintaining them by hand. Their CSVs cover the whole Elektron line with
       `cc_msb`/`cc_lsb`/`nrpn_msb`/`nrpn_lsb`/min/max/default plus an `orientation` field
@@ -126,8 +148,9 @@ a Digitakt II spec ever lands, where its expectations become correct).
       [`mzero/elk-herd`](https://github.com/mzero/elk-herd) (BSD-2) documents the struct
       layouts per OS version and is the most authoritative public source; its author was
       given Elektron's actual headers. Covers Digitakt and Digitakt II, not Digitone.
-- [ ] **`mcp` 2.x migration.** 2.0 dropped `mcp.server.fastmcp` for `mcp.server.mcpserver`.
-      Pinned to `<2` for now; this is a real rewrite of the registration layer.
+- [ ] **Chorus map disagreement on the Digitone.** `set_chorus` sends CCs from
+      `ChorusCC`, while `set_parameter("chorus_mix")` sends NRPNs from `ChorusParams`. At
+      most one is right for the mk1; check on hardware.
 - [ ] **Publish to PyPI** so it's `uvx digitakt-mcp` with no clone.
 - [ ] Kit / sound-lock parameters, sample slot selection.
 

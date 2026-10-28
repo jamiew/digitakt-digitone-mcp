@@ -1,10 +1,15 @@
 """Tests for the shared server core, run against every device."""
 
+import asyncio
 import json
+import logging
 
 import pytest
+from mcp.client import Client
 
-from elektron_mcp.midi import NotConnectedError
+from conftest import RecordingPort, ToolError
+from elektron_mcp import clock
+from elektron_mcp.midi import MidiConnection
 
 
 class TestCoreMidi:
@@ -98,6 +103,32 @@ class TestClock:
         # One note per bar of loop, for four bars.
         assert len(any_device.port.of_type("note_on")) == 4
 
+    async def test_long_patterns_report_progress_each_bar(self, any_device):
+        updates: list[tuple[float, float | None]] = []
+
+        async def on_progress(progress, total, message):
+            updates.append((progress, total))
+
+        async with Client(any_device.device.mcp) as client:
+            await client.call_tool("play_with_clock", {"bars": 2, "bpm": 300}, progress_callback=on_progress)
+
+        assert updates == [(1, 2), (2, 2)]
+
+    async def test_cancelling_playback_stops_the_sequencer(self):
+        """Otherwise the device sits mid-pattern waiting for clock that never comes."""
+        port = RecordingPort()
+        connection = MidiConnection(port_name="x", display_name="x", logger=logging.getLogger("test"))
+        connection.output_port = port
+
+        task = asyncio.create_task(clock.play(connection, [], bars=8, bpm=120))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert port.types[0] == "start"
+        assert port.types[-1] == "stop"
+
 
 class TestParameters:
     async def test_list_parameters_groups_by_category(self, any_device):
@@ -115,7 +146,7 @@ class TestParameters:
         assert any_device.port.controls() == [(expected, 100)]
 
     async def test_set_parameter_rejects_unknown_names(self, any_device):
-        with pytest.raises(Exception, match="Unknown parameter"):
+        with pytest.raises(ToolError, match="Unknown parameter"):
             await any_device.call("set_parameter", name="not_a_real_parameter", value=1)
 
     async def test_set_parameter_handles_nrpn_parameters(self, any_device):
@@ -186,7 +217,7 @@ class TestPatterns:
         assert sorted(t[0] for t in data["track_triggers"]) == [0, 2]
 
     async def test_missing_pattern_raises(self, any_device):
-        with pytest.raises(Exception, match="not found"):
+        with pytest.raises(ToolError, match="not found"):
             await any_device.call("load_pattern", pattern_name="nope")
 
 
@@ -220,8 +251,39 @@ class TestResources:
 
 
 class TestConnection:
-    async def test_tools_fail_loudly_when_disconnected(self, any_device):
+    async def test_disconnected_tools_tell_the_client_why(self, any_device):
+        """mcp 2.x hides the text of unexpected exceptions, so this must stay a ToolError."""
         any_device.device.connection.output_port = None
 
-        with pytest.raises(NotConnectedError, match="Not connected"):
-            any_device.device.connection.cc(74, 100, 0)
+        with pytest.raises(ToolError, match="Not connected"):
+            await any_device.call("send_cc", cc_number=74, value=100)
+
+
+class TestSchema:
+    async def test_every_parameter_is_described(self, any_device):
+        """Bare `Annotated[int, "text"]` metadata is silently dropped from the schema."""
+        for tool in await any_device.tools():
+            for name, prop in tool.input_schema["properties"].items():
+                assert prop.get("description"), f"{tool.name}.{name} has no description"
+
+    async def test_every_array_declares_its_items(self, any_device):
+        """OpenAI rejects function schemas with an untyped array."""
+
+        def arrays(schema):
+            if isinstance(schema, dict):
+                if schema.get("type") == "array":
+                    yield schema
+                for value in schema.values():
+                    yield from arrays(value)
+            elif isinstance(schema, list):
+                for value in schema:
+                    yield from arrays(value)
+
+        for tool in await any_device.tools():
+            for array in arrays(tool.input_schema):
+                assert "items" in array, f"{tool.name} has an array without items"
+
+    async def test_out_of_range_arguments_are_rejected_before_sending(self, any_device):
+        with pytest.raises(ToolError):
+            await any_device.call("send_cc", cc_number=74, value=128)
+        assert any_device.port.messages == []
