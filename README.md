@@ -46,6 +46,10 @@ configure as long as it appears as "Elektron Digitakt" / "Elektron Digitone" —
 you can confirm in Audio MIDI Setup. If you use Overbridge, the Overbridge Engine needs
 to be running.
 
+Working inside this repo? Claude Code reads the checked-in `.mcp.json` and offers both
+servers when you open it. Turn off the one you aren't using in `/mcp`; each costs about
+6k tokens of tool schema.
+
 ---
 
 ## Digitakt
@@ -209,6 +213,10 @@ Each server also exposes three resources: `midi://ports`, `midi://<device>/statu
 `midi://<device>/parameters` (the full parameter table as JSON, so the model can look up
 names on demand instead of carrying them in every tool description).
 
+Every tool carries MCP annotations, so clients can tell a note from a change that
+overwrites a sound. Playback tools report progress once per bar, and cancelling one sends
+MIDI Stop so the device doesn't hang mid-pattern.
+
 ### Where data goes
 
 ```
@@ -269,10 +277,10 @@ Everything else that changed:
 | Target hardware | Digitakt II | Digitakt + Digitone, both originals |
 | Devices | 1 | 2, each its own server, each installable alone |
 | Structure | one 4,300-line `server.py` | `src/elektron_mcp/` package, devices as data |
-| MCP API | low-level `mcp.server.Server` | FastMCP, with resources as well as tools |
+| MCP API | low-level `mcp.server.Server` | `MCPServer` (mcp 2.x): resources, tool annotations, progress |
 | Install | `requirements.txt` | `uv` + hatchling, console scripts, wheel |
-| Python | 3.10+ | 3.11–3.13, `py.typed`, checked with `ty` |
-| Tests | hardware scripts only | 62 tests, no hardware needed |
+| Python | 3.10+ | 3.11–3.14, `py.typed`, checked with `ty` |
+| Tests | hardware scripts only | 71 tests with no hardware, plus a live LLM harness |
 | CI | — | GitHub Actions: format, lint, types, tests, build |
 | License | none | MIT |
 
@@ -282,18 +290,93 @@ they've since been corrected for the mk1.
 
 ---
 
+## Testing it
+
+Go from cheapest to most real. Each step needs a bit more than the one before.
+
+| Step | Command | Needs |
+|---|---|---|
+| Unit tests | `uv run pytest` | nothing |
+| Poke single tools | `uv run python -m harness digitakt call trigger_track track=1` | the device on USB, or `--dry-run` |
+| Scenario suite, no hardware | `uv run python -m harness digitone --dry-run test` | an API key |
+| Scenario suite on the device | `uv run python -m harness digitakt test` | key + device |
+| Free-form chat | `uv run python -m harness digitakt` | key + device |
+| The real client | open the repo in Claude Code; `.mcp.json` offers both servers | Claude Code |
+
+### The live harness
+
+`harness/` drives either server with a real model, so you can check the MCP surface
+without opening Claude or ChatGPT. It starts the server from `.mcp.json`, the same way
+Claude Code does. Run it from the repo root.
+
+Put one of these in your environment or in a `.env` file at the repo root (it's
+gitignored): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`. The harness
+uses the first one it finds. `--provider anthropic|openai|openrouter` picks one
+explicitly, and `--model` overrides the default model.
+
+```bash
+uv run python -m harness digitakt                  # chat; /reset starts over, Ctrl-D quits
+uv run python -m harness digitakt test             # scenario suite; exits 1 on any failure
+uv run python -m harness digitakt test -k filter   # just the scenarios named *filter*
+uv run python -m harness digitone --dry-run        # chat with no hardware; MIDI is captured
+uv run python -m harness digitakt call             # list tools and resources, no key needed
+uv run python -m harness digitakt call play_pattern_with_tracks \
+    triggers='[[0,1,110],[1,2,100],[2,1,110],[3,2,100]]' bars=2 bpm=90
+```
+
+Every tool call prints as it happens (`→ set_parameter(name="filter_cutoff", ...)`),
+followed by its result, with progress per bar for playback. The server's own log shows
+each MIDI message it sends. Ctrl-C during playback sends MIDI Stop.
+
+Each scenario in `harness/scenarios.py` is a prompt plus the tool calls that would answer
+it. For example, "Set the filter cutoff on track 2 to 40" passes on
+`set_parameter(name="filter_cutoff", value=40, channel=2)` or on the matching raw
+`send_cc`. To add one, copy a scenario and list the calls that would count as success.
+
+### Prompts to try
+
+These work in the harness chat and in Claude Code. Tracks follow the device's default
+channels (Digitakt tracks 1-8 on channels 1-8, Digitone tracks 1-4 on channels 1-4).
+
+Digitakt:
+
+- "Play 2 bars of boom bap at 90 BPM: kick on track 1, snare on track 2 on beats 2 and 4, track 6 on eighth notes."
+- "Sweep the filter cutoff on track 6 from 20 up to 110 over 4 seconds."
+- "On the sequencer, set steps 1, 5, 9 and 13 of track 1 to velocity 127 and the other steps to 80."
+- "Save that beat as boom-bap-90, then export it to a MIDI file."
+- "Which LFO parameters can you set? Then make the LFO on track 3 slow and deep."
+
+Digitone:
+
+- "Play Cmaj7 then Am9 on track 1, two bars each at 80 BPM."
+- "Make track 2 a darker bass: algorithm 1, lower the A level, shorter decay."
+- "Play one bar of bass on track 2 at 120 BPM: C2 on every eighth note, G1 on the last two."
+- "Turn the chorus mix up to 90 and the depth to 60."
+- "Give track 3 a bell sound with a non-integer A ratio, then play a C major arpeggio on it."
+
+## Samples and the +Drive
+
+The MCP servers speak plain MIDI. They can't see the +Drive or load samples yet.
+[Elektroid](https://github.com/dagargo/elektroid)'s `elektroid-cli` can, over the same USB
+cable. It lists the +Drive, the project's sample slots and which sample each track uses,
+and it uploads WAVs. `.claude/skills/elektron-bridge/SKILL.md` has the verified commands
+and the kit-bootstrapping recipes, and Claude Code picks the skill up automatically.
+
+---
+
 ## Development
 
 ```bash
-uv sync --dev
-uv run pytest              # 62 tests, no hardware needed
+uv sync
+uv run pytest              # 71 tests, no hardware needed
 uv run ruff check .
 uv run ruff format .
 uv run ty check
 ```
 
-Tests drive the real MCP surface (`call_tool`) against a recording MIDI port, so tool
-registration and schema generation are covered along with the emitted bytes.
+Tests drive the real MCP surface (an in-process `mcp.client.Client`) against a recording
+MIDI port, so tool registration, schema validation and error text are covered along with
+the emitted bytes.
 
 ```
 src/elektron_mcp/
@@ -302,10 +385,11 @@ src/elektron_mcp/
   clock.py       the one clock loop every playback tool shares
   storage.py     patterns / presets / recordings on disk
   midifile.py    .mid writing
-  server.py      build_server(spec) -> a full FastMCP server
+  server.py      build_server(spec) -> a full MCPServer
   devices/
     digitakt.py  spec + trigger/trig tools
     digitone.py  spec + FM tools
+harness/         live LLM harness: providers, scenarios, CLI
 ```
 
 `scripts/hardware/` holds manual scripts that need a real device attached; they are not
@@ -320,7 +404,7 @@ Built on:
 - [mido](https://github.com/mido/mido) and
   [python-rtmidi](https://github.com/SpotlightKid/python-rtmidi) — MIDI I/O
 - [Model Context Protocol](https://modelcontextprotocol.io/) and the
-  [Python SDK](https://github.com/modelcontextprotocol/python-sdk)'s FastMCP
+  [Python SDK](https://github.com/modelcontextprotocol/python-sdk)'s `MCPServer`
 
 Device and protocol documentation:
 

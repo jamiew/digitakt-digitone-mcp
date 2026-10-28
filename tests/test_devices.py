@@ -2,6 +2,7 @@
 
 import pytest
 
+from conftest import ToolError
 from elektron_mcp.devices import DEVICES
 from elektron_mcp.devices.digitone import ALGORITHM_DESCRIPTIONS
 from elektron_mcp.devices.digitone_cc import Syn1CC, Syn2CC
@@ -75,16 +76,17 @@ class TestDigitone:
         assert digitone.port.controls() == [(Syn1CC.ALGORITHM, 0)]
         assert ALGORITHM_DESCRIPTIONS[1] in result
 
-    async def test_set_algorithm_rejects_out_of_range(self, digitone):
-        with pytest.raises(Exception, match="1-8"):
+    async def test_set_algorithm_rejects_out_of_range_before_sending(self, digitone):
+        with pytest.raises(ToolError, match="less than or equal to 8"):
             await digitone.call("set_algorithm", algorithm=9)
+        assert digitone.port.messages == []
 
     async def test_set_parameter_enforces_the_declared_range(self, digitone):
         """`fm_algorithm` is 0-7. The old code looked for min/max keys the table never had,
         so it fell back to 0-127 and happily sent out-of-range values."""
         assert digitone.device.spec.parameters["fm_algorithm"].maximum == 7
 
-        with pytest.raises(Exception, match="out of range"):
+        with pytest.raises(ToolError, match="out of range"):
             await digitone.call("set_parameter", name="fm_algorithm", value=100)
 
     async def test_set_ratios_only_sends_what_was_given(self, digitone):
@@ -103,6 +105,7 @@ class TestDigitone:
         ]
         assert "attack=10" in result and "decay=20" in result and "level=30" in result
 
-    async def test_operator_envelope_rejects_a_bad_operator(self, digitone):
-        with pytest.raises(Exception, match="'A' or 'B'"):
+    async def test_operator_envelope_rejects_a_bad_operator_before_sending(self, digitone):
+        with pytest.raises(ToolError):
             await digitone.call("set_operator_envelope", operator="C", attack=1)
+        assert digitone.port.messages == []
