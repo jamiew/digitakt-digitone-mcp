@@ -44,11 +44,20 @@ dev = [
     "pytest-asyncio>=1.4.1",
     "ty>=0.0.93",
 ]
+# The live LLM test harness in harness/. Not needed to run the MCP servers.
+harness = [
+    "anthropic>=2.3.0",
+    "openai>=3.40.0",
+    "python-dotenv>=1.2.4",
+]
+
+[tool.uv]
+default-groups = ["dev", "harness"]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 120
-src = ["src", "tests"]
+src = ["src", "tests", "harness"]
 # Legacy manual hardware scripts, kept for reference but not held to package standards.
 extend-exclude = ["scripts/hardware"]
 
@@ -90,4 +99,4 @@ asyncio_default_fixture_loop_scope = "function"
 addopts = "--strict-markers -q"
 
 [tool.ty.src]
-include = ["src"]
+include = ["src", "harness"]

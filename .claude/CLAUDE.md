@@ -5,10 +5,13 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 
 ## Quick Reference
 
-- **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp`
+- **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
 - **Tests**: `uv run pytest` (71 tests, no hardware needed)
 - **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check`
+- **Live harness**: `uv run python -m harness <digitakt|digitone> [chat|test|call]`, `--dry-run` for no hardware
 - **Hardware scripts**: `scripts/hardware/` — manual, need a real device, not collected by pytest
+- **Samples / +Drive / kit bootstrapping**: not in the MCP yet. Use the `elektron-bridge`
+  skill (`.claude/skills/elektron-bridge/SKILL.md`), which drives `elektroid-cli`
 
 ## Key Files
 
@@ -22,6 +25,7 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 | `src/elektron_mcp/devices/digitone.py` | Digitone spec + its 6 FM tools |
 | `src/elektron_mcp/devices/*_params.py` | Parameter tables (data) |
 | `src/elektron_mcp/devices/*_cc.py` | CC/NRPN constants (data) |
+| `harness/` | Live LLM harness: Anthropic/OpenAI/OpenRouter adapters, scenarios, CLI |
 | `PLAN.md` | Status, TODO, architecture notes |
 
 ## Conventions
@@ -73,6 +77,9 @@ hardware is needed:
 ```bash
 uv run pytest
 ```
+
+With a device on USB and an API key set, `uv run python -m harness digitakt test` runs the
+LLM scenario suite against the real server. `call` runs single tools with no key.
 
 ## Data Storage
 
