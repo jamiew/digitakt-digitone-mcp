@@ -13,7 +13,7 @@ from typing import Annotated
 from mcp.server.mcpserver import Context
 from pydantic import Field
 
-from elektron_mcp import clock
+from elektron_mcp import clock, drive
 from elektron_mcp.clock import note_event
 from elektron_mcp.device import DeviceSpec, parse_parameters
 from elektron_mcp.devices.digitakt_cc import get_param_name
@@ -215,6 +215,37 @@ def register_tools(device: DeviceServer) -> None:
             progress=bar_progress(ctx),
         )
         return f"Played {bars} bars at {bpm} BPM with {len(track_triggers)} triggers + {len(melody_notes)} melody notes"
+
+    # ----------------------------------------------------------- storage
+
+    drive.register_sound_tools(device)
+    drive.register_sample_tools(device)
+
+    @device.mcp.prompt(title="New kit")
+    def new_kit(
+        style: Annotated[str, Field(description="Genre or feel to audition with, e.g. 'boom bap 90 BPM'.")] = "",
+    ) -> str:
+        """Shuffle a fresh drum kit from the project's samples and audition it."""
+        feel = f" in a {style} style" if style else ""
+        return (
+            "Bootstrap a new Digitakt kit. First call bootstrap_kit with dry_run=true and show me the picks "
+            "as a table of track, role and sample. If a role came up empty, look on the +Drive with list_drive "
+            "and suggest a sample I could load with load_sample. Then apply the kit, trigger each changed "
+            f"track once, and play a 2-bar pattern that uses them{feel}. Keep the 'was slot' numbers so we "
+            "can undo."
+        )
+
+    @device.mcp.prompt(title="Load a Cipher pack")
+    def load_cipher_pack(
+        pack_folder: Annotated[str, Field(description="Local folder of WAVs, e.g. ~/dev/cipher/exports/<pack>.")],
+    ) -> str:
+        """Upload a Cipher sample pack to the +Drive and put a few of its sounds on tracks."""
+        return (
+            f"Upload the samples in {pack_folder} to the +Drive under /cipher with upload_samples, keeping one "
+            "folder per song. Then pick a drum loop, a bass sample and one other phrase from what you uploaded, "
+            "load them onto tracks 3, 5 and 8 with load_sample, and play 2 bars so I can hear them. Cipher names "
+            "files by role and length, like 'drum loop 2bar 89bpm', so match the BPM to the loop."
+        )
 
 
 SPEC = DeviceSpec(

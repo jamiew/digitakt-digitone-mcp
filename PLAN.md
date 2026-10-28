@@ -7,15 +7,15 @@ FastMCP server from a `DeviceSpec`; each device ships its own console script so 
 cost stays per-device. Digitakt and Digitone are supported; both are on the original
 hardware, not the mk2 machines.
 
-Green: `ruff check`, `ruff format --check`, `ty check`, 71 tests, wheel builds and
+Green: `ruff check`, `ruff format --check`, `ty check`, 95 tests, wheel builds and
 imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-07-28.
 
 | | |
 |---|---|
-| Devices | Digitakt (44 tools, ~6.3k tokens), Digitone (43 tools, ~6.2k tokens) |
+| Devices | Digitakt (50 tools, ~7.0k tokens), Digitone (44 tools, ~6.3k tokens) |
 | Entry points | `digitakt-mcp`, `digitone-mcp`, both in `.mcp.json` |
 | Python | 3.11–3.14 |
-| Tests | 71, no hardware required; plus `harness/` for live LLM runs |
+| Tests | 95, no hardware required; plus `harness/` for live LLM runs |
 
 ## Architecture
 
@@ -129,39 +129,32 @@ a Digitakt II spec ever lands, where its expectations become correct).
       highest-leverage change available: it would fix 14-bit CC pairs, add value ranges
       we currently lack, and make Digitakt II / Syntakt / Analog Rytm nearly free.
 - [ ] **Cross-check the existing maps** against that database before trusting them.
-- [ ] **Storage bridge: +Drive, sample slots, tracks.** Today this lives in
-      `.claude/skills/elektron-bridge/SKILL.md` as `elektroid-cli` recipes. Checked on a
-      Digitakt (OS 1.52A, Oct 2026):
-      - `elektroid-cli` lists the +Drive (`sample:ls`), the project's slots (`ram:ls`, slot →
-        path and used flag), track → slot (`track:ls`), projects and sound banks, plus usage
-        (`df`).
-      - `set_parameter("sample_slot", N, channel=T)` (CC 19) moves track T to RAM slot N, and
-        `track:ls` shows the change right away. So a kit can be reshuffled from the
-        project's pool over plain MIDI.
-      - `ram:ul` / `track:ul` only take a local WAV and copy it into `/incoming` first. The
-        protocol has a "load +Drive path into slot/track" request (`0x19` in elektroid's
-        `elektron.c`) that would avoid the copy, but no CLI command exposes it.
+- [x] **Storage bridge v1, on `elektroid-cli`.** `elektroid.py` wraps the CLI and parses
+      its output, `drive.py` has the tools, `kit.py` guesses drum roles from names.
+      Tools: `list_drive`, `list_sample_slots`, `load_sample`, `upload_samples`,
+      `bootstrap_kit`, `list_sounds`. There's also a `midi://digitakt/kit` resource, plus
+      prompts `new_kit`, `load_cipher_pack` and (Digitone) `new_sounds`.
 
-      Two ways to bring it into the MCP: shell out to `elektroid-cli` (quick; adds an
-      external GPL-3 binary as an optional dependency, and still makes the `/incoming`
-      copies), or speak Elektron's SysEx file protocol natively (no dependency, can load
-      straight from the +Drive, more work). Put both behind one small `Storage` interface,
-      so the first can ship now and the second can replace it later.
-
-      MCP has everything this needs. The servers run locally over stdio, so tools can take
-      plain paths on the user's machine.
-
-      | MCP feature | Use |
-      |---|---|
-      | Tools | `list_drive(path)`, `list_sample_slots`, `list_tracks`, `storage_usage`; then `load_sample(track, path)` (a +Drive path, or a local WAV), `upload_samples(local_path, drive_dir)`, `bootstrap_kit(roles)` |
-      | Resources | `elektron://digitakt/slots` and `/tracks` as JSON. A template `elektron://digitakt/drive/{path}` for browsing, so clients can attach a folder listing as context |
-      | Completions | Autocomplete +Drive paths and slot numbers for the template and prompt arguments |
-      | Prompts | `bootstrap_kit` (kick/snare/hats/crash/break), `bootstrap_digitone` (texture, keys, bass, lead), `load_cipher_pack(pack)` |
-      | Annotations | Reads are `READS`. Uploads and loads are `WRITES`, and any delete is destructive and off by default |
-
-      Leave out: elicitation for confirmations (annotations already let clients ask),
-      sampling and roots (deprecated in the 2026-07-28 spec), and audio blobs in resources
-      (models can't listen; return paths and metadata instead).
+      Tried on a Digitakt (OS 1.52A, Oct 2026) with the MCP server holding the same MIDI
+      port: listing works, and `bootstrap_kit` put a kick, snare, break, hats and crash on
+      tracks, which then played. Afterwards every track was set back to its original slot.
+      Found on the way:
+      - **The AUTO channel wins.** A sample-slot CC on channel 1 moved the *active* track
+        (4), not track 1, because channel 1 is also this unit's AUTO channel. The tools now
+        read the tracks back and warn when a track didn't change.
+      - Each `harness call` starts a new server. Launching several back to back once failed
+        with a CoreMIDI "error creating client" (-304) from rtmidi. It was transient.
+      - Not yet tried on hardware: `upload_samples`, and `load_sample` with a local or
+        not-yet-loaded file. Both write to the +Drive (the latter via `/incoming`).
+- [ ] **Native SysEx storage backend.** Elektron's file protocol has a "load this +Drive
+      path into slot N, for track T" request (`0x19` in elektroid's `elektron.c`). It would
+      remove the `/incoming` copies, and it addresses the track directly, which avoids the
+      AUTO channel problem. It goes behind the same `Elektroid` methods, and the
+      `elektroid-cli` dependency then becomes optional.
+- [ ] **More MCP surface for storage:** a `midi://digitakt/drive/{path}` resource template,
+      and completions for +Drive paths and slot numbers in prompt arguments. Leave out:
+      elicitation (annotations already let clients ask), sampling and roots (deprecated
+      in the 2026-07-28 spec), and audio blobs in resources (models can't listen).
 
 ### Medium
 

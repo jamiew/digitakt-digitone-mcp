@@ -25,6 +25,7 @@ from pydantic import Field, WithJsonSchema
 from elektron_mcp import clock, midifile
 from elektron_mcp.clock import Event, cc_event, note_event
 from elektron_mcp.device import DeviceSpec, Parameter
+from elektron_mcp.elektroid import Elektroid
 from elektron_mcp.midi import MidiConnection, available_ports, note_name
 from elektron_mcp.storage import Storage, read_json, write_json
 
@@ -42,7 +43,7 @@ PLAYS = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent
 SETS = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=True)
 """Overwrites a sound or sequencer value on the device. Unsaved tweaks are lost."""
 LISTENS = ToolAnnotations(read_only_hint=True, open_world_hint=True)
-"""Reads MIDI arriving from the device."""
+"""Reads from the device: incoming MIDI, or what's in its storage."""
 READS = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 """Reads local data only."""
 WRITES = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False)
@@ -120,6 +121,8 @@ class DeviceServer:
     storage: Storage
     mcp: ElektronMCPServer
     logger: logging.Logger
+    elektroid: Elektroid
+    """Storage access (+Drive, sample slots, sounds). Tools read it at call time, so tests can swap it."""
     history: PlaybackHistory = field(default_factory=PlaybackHistory)
 
     # -------------------------------------------------------------- helpers
@@ -202,6 +205,7 @@ def build_server(spec: DeviceSpec, *, storage_root=None) -> DeviceServer:
             instructions=_instructions(spec),
         ),
         logger=logger,
+        elektroid=Elektroid(spec.port_name),
     )
 
     _register_core(device)

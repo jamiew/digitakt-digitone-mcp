@@ -6,12 +6,12 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 ## Quick Reference
 
 - **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
-- **Tests**: `uv run pytest` (71 tests, no hardware needed)
+- **Tests**: `uv run pytest` (95 tests, no hardware needed)
 - **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check`
 - **Live harness**: `uv run python -m harness <digitakt|digitone> [chat|test|call]`, `--dry-run` for no hardware
 - **Hardware scripts**: `scripts/hardware/` — manual, need a real device, not collected by pytest
-- **Samples / +Drive / kit bootstrapping**: not in the MCP yet. Use the `elektron-bridge`
-  skill (`.claude/skills/elektron-bridge/SKILL.md`), which drives `elektroid-cli`
+- **Samples / +Drive / kit bootstrapping**: storage tools in `drive.py`, backed by `elektroid-cli`
+  (`elektroid.py`). The `elektron-bridge` skill covers what the tools don't
 
 ## Key Files
 
@@ -25,6 +25,9 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 | `src/elektron_mcp/devices/digitone.py` | Digitone spec + its 6 FM tools |
 | `src/elektron_mcp/devices/*_params.py` | Parameter tables (data) |
 | `src/elektron_mcp/devices/*_cc.py` | CC/NRPN constants (data) |
+| `src/elektron_mcp/elektroid.py` | `elektroid-cli` wrapper + output parsers (+Drive, slots, tracks, sounds) |
+| `src/elektron_mcp/drive.py` | Storage tools: `list_drive`, `list_sample_slots`, `load_sample`, `upload_samples`, `bootstrap_kit`, `list_sounds` |
+| `src/elektron_mcp/kit.py` | Drum-role guessing from sample names, kit picking |
 | `harness/` | Live LLM harness: Anthropic/OpenAI/OpenRouter adapters, scenarios, CLI |
 | `PLAN.md` | Status, TODO, architecture notes |
 
@@ -90,9 +93,10 @@ All user data in `~/.mcp-config/digitakt/`:
 
 ## Token Budget
 
-Model-facing tool schemas (name + description + input schema) are ~6.3k tokens per server
+Model-facing tool schemas (name + description + input schema) are ~7.0k tokens for the
+Digitakt and ~6.3k for the Digitone
 by a chars/4 estimate, now that parameter descriptions actually reach the schema. Keep
-under ~6.5k. `ElektronMCPServer.list_tools` strips pydantic's auto titles (~1k tokens).
+under ~7.5k. `ElektronMCPServer.list_tools` strips pydantic's auto titles (~1k tokens).
 When compressing docstrings, aim for <100 tokens per tool.
 
 ---

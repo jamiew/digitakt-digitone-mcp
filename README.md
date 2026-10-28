@@ -204,10 +204,12 @@ targets that channel, not a track.
 | Recording | `monitor_midi_input`, `record_midi_input`, `list_midi_recordings`, `play_midi_file` |
 
 Digitakt adds `trigger_track`, `set_trig_note`, `set_trig_velocity`, `set_trig_length`,
-`reset_velocities`, `play_pattern_with_tracks`, `play_pattern_with_tracks_and_melody`.
+`reset_velocities`, `play_pattern_with_tracks`, `play_pattern_with_tracks_and_melody`, and
+the storage tools below: `list_drive`, `list_sample_slots`, `load_sample`,
+`upload_samples`, `bootstrap_kit`.
 
 Digitone adds `play_chord`, `set_algorithm`, `set_ratios`, `set_operator_levels`,
-`set_operator_envelope`, `set_chorus`.
+`set_operator_envelope`, `set_chorus`. Both have `list_sounds`.
 
 Each server also exposes three resources: `midi://ports`, `midi://<device>/status`, and
 `midi://<device>/parameters` (the full parameter table as JSON, so the model can look up
@@ -280,7 +282,7 @@ Everything else that changed:
 | MCP API | low-level `mcp.server.Server` | `MCPServer` (mcp 2.x): resources, tool annotations, progress |
 | Install | `requirements.txt` | `uv` + hatchling, console scripts, wheel |
 | Python | 3.10+ | 3.11–3.14, `py.typed`, checked with `ty` |
-| Tests | hardware scripts only | 71 tests with no hardware, plus a live LLM harness |
+| Tests | hardware scripts only | 95 tests with no hardware, plus a live LLM harness |
 | CI | — | GitHub Actions: format, lint, types, tests, build |
 | License | none | MIT |
 
@@ -356,11 +358,40 @@ Digitone:
 
 ## Samples and the +Drive
 
-The MCP servers speak plain MIDI. They can't see the +Drive or load samples yet.
-[Elektroid](https://github.com/dagargo/elektroid)'s `elektroid-cli` can, over the same USB
-cable. It lists the +Drive, the project's sample slots and which sample each track uses,
-and it uploads WAVs. `.claude/skills/elektron-bridge/SKILL.md` has the verified commands
-and the kit-bootstrapping recipes, and Claude Code picks the skill up automatically.
+MIDI can't see storage, so these tools use
+[Elektroid](https://github.com/dagargo/elektroid)'s `elektroid-cli` over the same USB
+cable. Install it first; without it, the storage tools say so and everything else still
+works.
+
+| Tool | What it does |
+|---|---|
+| `list_drive` | A +Drive folder, plus storage usage |
+| `list_sample_slots` | Which slot each track plays, then the project's 127 slots (filter with `query`) |
+| `load_sample` | Put a slot number, a +Drive path or a local WAV on a track |
+| `upload_samples` | Copy a WAV or a folder of them onto the +Drive, keeping subfolders |
+| `bootstrap_kit` | Pick a kick, snare, break, hats and crash from the project's slots at random (`dry_run` to preview) |
+| `list_sounds` | A sound bank's names (both devices) |
+
+There are also prompts: `new_kit` and `load_cipher_pack` on the Digitakt, and
+`new_sounds` (texture, keys, bass, lead) on the Digitone. A `midi://digitakt/kit` resource
+returns the tracks and slots as JSON.
+
+Things to know:
+
+- Switching to a sample that's already in the project is instant and uploads nothing.
+  Anything else goes into a free slot, and elektroid keeps a copy in `/incoming` on the
+  +Drive.
+- Track sample changes go out as MIDI CC on each track's channel. If a track's channel is
+  also the AUTO channel, the change lands on the active track instead. The tools read the
+  tracks back and warn you when that happens.
+- Nothing deletes from the +Drive. Save the project on the device to keep a new kit.
+
+Prompts to try: "Suggest a new kit from my samples, but don't change anything yet", "Put
+the Jungle Beat break on track 3", "Upload ~/dev/cipher/exports/atoll to /cipher and put
+the drum loop on track 3".
+
+`.claude/skills/elektron-bridge/SKILL.md` covers the rest with raw `elektroid-cli`
+commands, and Claude Code picks it up automatically.
 
 ---
 
@@ -368,7 +399,7 @@ and the kit-bootstrapping recipes, and Claude Code picks the skill up automatica
 
 ```bash
 uv sync
-uv run pytest              # 71 tests, no hardware needed
+uv run pytest              # 95 tests, no hardware needed
 uv run ruff check .
 uv run ruff format .
 uv run ty check
