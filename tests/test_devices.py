@@ -29,8 +29,10 @@ class TestSpecs:
 
 class TestDigitakt:
     async def test_only_digitakt_exposes_trigger_tools(self, digitakt, digitone):
-        assert "trigger_track" in await digitakt.tool_names()
-        assert "trigger_track" not in await digitone.tool_names()
+        """save_last_pattern reads what play_pattern_with_tracks played, which only the Digitakt has."""
+        for tool in ("trigger_track", "play_pattern_with_tracks", "save_last_pattern"):
+            assert tool in await digitakt.tool_names()
+            assert tool not in await digitone.tool_names()
 
     async def test_trigger_track_maps_track_to_note(self, digitakt):
         result = await digitakt.call("trigger_track", track=3, velocity=80, duration=0.01, channel=1)
@@ -55,6 +57,14 @@ class TestDigitakt:
         await digitakt.call("play_pattern_with_tracks", triggers=[[0, 1, 100], [1, 2, 90]], bars=1, bpm=240)
 
         assert [m.note for m in digitakt.port.of_type("note_on")] == [0, 1]
+
+    async def test_save_last_pattern_writes_simultaneous_hits(self, digitakt):
+        await digitakt.call("play_pattern_with_tracks", triggers=[[0, 1, 100], [0, 6, 90]], bars=1, bpm=300)
+
+        result = await digitakt.call("save_last_pattern", filename="beat")
+
+        assert "2 triggers" in result
+        assert digitakt.device.storage.recording_path("beat").exists()
 
 
 class TestDigitone:
