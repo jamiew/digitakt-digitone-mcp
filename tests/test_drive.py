@@ -1,5 +1,7 @@
 """Storage tools, against a fake elektroid-cli that replays output captured from a Digitakt."""
 
+import asyncio
+import shutil
 from pathlib import Path
 
 import pytest
@@ -191,3 +193,27 @@ class TestMissingElektroid:
 
         with pytest.raises(ToolError, match="Install Elektroid"):
             await digitakt.call("list_drive")
+
+
+class TestRunCli:
+    async def test_cancelling_a_command_stops_the_process(self, monkeypatch):
+        """Otherwise a transfer keeps running after the lock that serialises device access is released."""
+        started = []
+        real_exec = asyncio.create_subprocess_exec
+
+        async def spawn(*args, **kwargs):
+            started.append(await real_exec(*args, **kwargs))
+            return started[0]
+
+        sleep = shutil.which("sleep")
+        monkeypatch.setattr(elektroid.shutil, "which", lambda name: sleep)
+        monkeypatch.setattr(elektroid.asyncio, "create_subprocess_exec", spawn)
+
+        task = asyncio.create_task(elektroid.run_cli(["30"], timeout=60))
+        while not started:
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert started[0].returncode is not None

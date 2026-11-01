@@ -282,7 +282,7 @@ Everything else that changed:
 | MCP API | low-level `mcp.server.Server` | `MCPServer` (mcp 2.x): resources, tool annotations, progress |
 | Install | `requirements.txt` | `uv` + hatchling, console scripts, wheel |
 | Python | 3.10+ | 3.11–3.14, `py.typed`, checked with `ty` |
-| Tests | hardware scripts only | 113 tests with no hardware, plus a live LLM harness |
+| Tests | hardware scripts only | 114 tests with no hardware, plus a live LLM harness |
 | CI | — | GitHub Actions: format, lint, types, tests, build |
 | License | none | MIT |
 
@@ -399,7 +399,7 @@ commands, and Claude Code picks it up automatically.
 
 ```bash
 uv sync
-uv run pytest              # 113 tests, no hardware needed
+uv run pytest              # 114 tests, no hardware needed
 uv run ruff check .
 uv run ruff format .
 uv run ty check

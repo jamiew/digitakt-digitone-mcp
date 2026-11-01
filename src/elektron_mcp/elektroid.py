@@ -9,6 +9,7 @@ replace it without touching the tools.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 import shutil
 from collections.abc import Awaitable, Callable
@@ -110,9 +111,15 @@ async def run_cli(args: list[str], timeout: float) -> str:
     )
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
-    except TimeoutError as exc:
-        process.kill()
-        raise ElektroidError(f"{BINARY} {' '.join(args)} timed out after {timeout:.0f}s") from exc
+    except BaseException as exc:
+        # Timed out, or the client cancelled the tool. Stop the transfer before the lock
+        # is released, or the next command talks to the device while it's still busy.
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+        await process.wait()
+        if isinstance(exc, TimeoutError):
+            raise ElektroidError(f"{BINARY} {' '.join(args)} timed out after {timeout:.0f}s") from exc
+        raise
     if process.returncode != 0:
         detail = (stderr or stdout).decode(errors="replace").strip().splitlines()
         raise ElektroidError(f"{BINARY} {' '.join(args)} failed: {detail[-1] if detail else process.returncode}")
