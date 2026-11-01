@@ -48,7 +48,7 @@ to be running.
 
 Working inside this repo? Claude Code reads the checked-in `.mcp.json` and offers both
 servers when you open it. Turn off the one you aren't using in `/mcp`; each costs about
-6k tokens of tool schema.
+6-7k tokens of tool schema.
 
 ---
 
