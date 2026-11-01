@@ -31,8 +31,8 @@ from elektron_mcp.storage import Storage, read_json, write_json
 
 # Event rows from the model, e.g. [beat, note, velocity, duration]. Advertised as
 # plain numbers, but validated as `int | float` so whole numbers stay ints: notes and
-# tracks must be ints by the time they reach mido.
-Row = list[Annotated[int | float, WithJsonSchema({"type": "number"})]]
+# tracks must be ints by the time they reach mido. Every row has at least two fields.
+Row = Annotated[list[Annotated[int | float, WithJsonSchema({"type": "number"})]], Field(min_length=2)]
 
 ToolFn = TypeVar("ToolFn", bound=Callable[..., Any])
 
@@ -108,8 +108,6 @@ class PlaybackHistory:
 
     melody: dict[str, Any] | None = None
     tracks: dict[str, Any] | None = None
-    loop: dict[str, Any] | None = None
-    multi_channel: dict[str, Any] | None = None
 
 
 @dataclass
@@ -251,11 +249,12 @@ def _register_core(device: DeviceServer) -> None:
         ch = channel - 1
         connection.note_on(note, velocity, ch)
         device.log_note_on(note, velocity, ch)
-
-        await asyncio.sleep(duration)
-
-        connection.note_off(note, ch)
-        device.log_note_off(note, ch)
+        try:
+            await asyncio.sleep(duration)
+        finally:
+            # Also on cancellation, or the note hangs.
+            connection.note_off(note, ch)
+            device.log_note_off(note, ch)
         return f"Sent note {note_name(note)} ({note}) vel={velocity} ch={channel} for {duration}s"
 
     @device.tool(SETS)
@@ -301,18 +300,23 @@ def _register_core(device: DeviceServer) -> None:
 
     @device.tool(PLAYS)
     async def send_note_sequence(
-        notes: Annotated[list[Row], Field(description="Note events, each [note, velocity, duration_sec].")],
+        notes: Annotated[list[Row], Field(description="Note events, each [note, velocity, duration_sec?].")],
         delay: Annotated[float, Field(ge=0, description="Gap between notes, in seconds.")] = 0.25,
         channel: Channel = 1,
     ) -> str:
         """Play a sequence of notes back to back, without MIDI clock."""
         ch = channel - 1
         for index, row in enumerate(notes):
-            note, velocity, duration = int(row[0]), int(row[1]), float(row[2])
+            note, velocity = int(row[0]), int(row[1])
+            duration = float(row[2]) if len(row) > 2 else 0.1
+            if not (0 <= note <= 127 and 0 <= velocity <= 127):
+                raise ToolError(f"Note {note} and velocity {velocity} must both be 0-127")
             connection.note_on(note, velocity, ch)
             device.log_note_on(note, velocity, ch)
-            await asyncio.sleep(duration)
-            connection.note_off(note, ch)
+            try:
+                await asyncio.sleep(duration)
+            finally:
+                connection.note_off(note, ch)
             if index < len(notes) - 1:
                 await asyncio.sleep(delay)
         return f"Sent sequence of {len(notes)} notes on channel {channel}"
@@ -329,7 +333,17 @@ def _register_core(device: DeviceServer) -> None:
             payload = [int(b) for b in data]
         elif hex_string:
             cleaned = hex_string.replace(" ", "").replace("0x", "")
-            payload = [int(cleaned[i : i + 2], 16) for i in range(0, len(cleaned), 2)]
+            try:
+                payload = [int(cleaned[i : i + 2], 16) for i in range(0, len(cleaned), 2)]
+            except ValueError:
+                raise ToolError(f"hex_string is not valid hex: {hex_string!r}") from None
+            # Framing is added for you, but a pasted message usually includes it.
+            if payload[:1] == [0xF0]:
+                payload = payload[1:]
+            if payload[-1:] == [0xF7]:
+                payload = payload[:-1]
+            if any(b > 0x7F for b in payload):
+                raise ToolError("SysEx data bytes must be 00-7F, apart from the F0/F7 framing.")
         else:
             raise ToolError("Must provide either 'data' or 'hex_string'")
 
@@ -466,8 +480,6 @@ def _register_playback(device: DeviceServer) -> None:
     ) -> str:
         """Play a melody locked to MIDI clock. Beat positions are quarter notes."""
         ch = channel - 1
-        device.history.melody = {"bpm": bpm, "notes": notes, "channel": channel}
-
         events = [
             note_event(
                 beat=row[0],
@@ -478,6 +490,7 @@ def _register_playback(device: DeviceServer) -> None:
             )
             for row in notes
         ]
+        device.history.melody = {"bpm": bpm, "notes": notes, "channel": channel}
 
         device.logger.info(f"▶️  PLAY MELODY: {bars} bars @ {bpm} BPM, {len(notes)} notes on ch={channel}")
         await clock.play(connection, events, bars=bars, bpm=bpm, send_stop=send_stop, progress=bar_progress(ctx))
@@ -495,7 +508,6 @@ def _register_playback(device: DeviceServer) -> None:
     ) -> str:
         """Play a short pattern that repeats for the full duration."""
         ch = channel - 1
-        device.history.loop = {"bpm": bpm, "loop_notes": loop_notes, "loop_length": loop_length, "channel": channel}
         loop_pulses = int(loop_length * clock.PULSES_PER_BAR)
 
         events = [
@@ -534,13 +546,6 @@ def _register_playback(device: DeviceServer) -> None:
         midi_channels = midi_channels or {}
         parameter_automation = parameter_automation or {}
 
-        device.history.multi_channel = {
-            "bpm": bpm,
-            "bars": bars,
-            "track_triggers": track_triggers,
-            "midi_channels": midi_channels,
-        }
-
         events: list[Event] = []
 
         for row in track_triggers:
@@ -555,7 +560,10 @@ def _register_playback(device: DeviceServer) -> None:
             )
 
         for channel_str, rows in midi_channels.items():
-            ch = int(channel_str) - 1
+            try:
+                ch = int(channel_str) - 1
+            except ValueError:
+                raise ToolError(f"midi_channels keys are channel numbers 1-16, got {channel_str!r}") from None
             for row in rows:
                 events.append(
                     note_event(
@@ -1044,20 +1052,6 @@ def _register_export(device: DeviceServer) -> None:
             track_name="Melody",
         )
         return f"Saved melody to {path} ({count} notes at {melody['bpm']} BPM)"
-
-    @device.tool(WRITES)
-    def save_last_pattern(
-        filename: Annotated[str, Field(description="Output filename; .mid is added if missing.")],
-    ) -> str:
-        """Save the most recently played track pattern to a MIDI file."""
-        tracks = device.history.tracks
-        if not tracks:
-            raise ToolError("No pattern has been played yet. Use play_pattern_with_tracks first.")
-
-        path = storage.recording_path(filename)
-        notes = [[row[0], int(row[1]) - 1, row[2] if len(row) > 2 else 100, 0.1] for row in tracks["triggers"]]
-        count = midifile.write_notes(path, bpm=tracks["bpm"], notes=notes, channel=0, track_name="Drums")
-        return f"Saved pattern to {path} ({count} triggers at {tracks['bpm']} BPM)"
 
 
 # ============================================================================

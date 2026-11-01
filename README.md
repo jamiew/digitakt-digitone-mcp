@@ -16,8 +16,8 @@ Two servers ship today, and **you install and run them independently**:
 
 | Server | Device | Tools | ~Token cost |
 |--------|--------|-------|-------------|
-| `digitakt-mcp` | Elektron Digitakt (original) | 44 | ~5.2k |
-| `digitone-mcp` | Elektron Digitone (original) | 43 | ~5.1k |
+| `digitakt-mcp` | Elektron Digitakt (original) | 50 | ~6.9k |
+| `digitone-mcp` | Elektron Digitone (original) | 43 | ~6.2k |
 
 They share one implementation internally — a device is a `DeviceSpec` (port name, track
 count, parameter table) over a common core — but each is its own MCP server with its own
@@ -200,13 +200,13 @@ targets that channel, not a track.
 | Automation | `send_parameter_sweep`, `send_parameter_envelope` |
 | Patterns | `save_pattern`, `load_pattern`, `list_patterns`, `delete_pattern`, `update_pattern`, `edit_pattern_triggers`, `edit_pattern_chords` |
 | Presets | `save_automation_preset`, `load_automation_preset`, `list_automation_presets` |
-| Export | `export_pattern_to_midi`, `export_automation_to_midi`, `save_last_melody`, `save_last_pattern` |
+| Export | `export_pattern_to_midi`, `export_automation_to_midi`, `save_last_melody` |
 | Recording | `monitor_midi_input`, `record_midi_input`, `list_midi_recordings`, `play_midi_file` |
 
 Digitakt adds `trigger_track`, `set_trig_note`, `set_trig_velocity`, `set_trig_length`,
-`reset_velocities`, `play_pattern_with_tracks`, `play_pattern_with_tracks_and_melody`, and
-the storage tools below: `list_drive`, `list_sample_slots`, `load_sample`,
-`upload_samples`, `bootstrap_kit`.
+`reset_velocities`, `play_pattern_with_tracks`, `play_pattern_with_tracks_and_melody`,
+`save_last_pattern`, and the storage tools below: `list_drive`, `list_sample_slots`,
+`load_sample`, `upload_samples`, `bootstrap_kit`.
 
 Digitone adds `play_chord`, `set_algorithm`, `set_ratios`, `set_operator_levels`,
 `set_operator_envelope`, `set_chorus`. Both have `list_sounds`.
@@ -282,7 +282,7 @@ Everything else that changed:
 | MCP API | low-level `mcp.server.Server` | `MCPServer` (mcp 2.x): resources, tool annotations, progress |
 | Install | `requirements.txt` | `uv` + hatchling, console scripts, wheel |
 | Python | 3.10+ | 3.11–3.14, `py.typed`, checked with `ty` |
-| Tests | hardware scripts only | 95 tests with no hardware, plus a live LLM harness |
+| Tests | hardware scripts only | 113 tests with no hardware, plus a live LLM harness |
 | CI | — | GitHub Actions: format, lint, types, tests, build |
 | License | none | MIT |
 
@@ -399,7 +399,7 @@ commands, and Claude Code picks it up automatically.
 
 ```bash
 uv sync
-uv run pytest              # 95 tests, no hardware needed
+uv run pytest              # 113 tests, no hardware needed
 uv run ruff check .
 uv run ruff format .
 uv run ty check
