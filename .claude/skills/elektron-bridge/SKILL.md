@@ -5,17 +5,25 @@ description: Use when working with the Digitakt or Digitone through this repo's 
 
 # Elektron bridge: MCP + elektroid
 
-Two tools share the one USB cable. Use each for what it's good at.
+The Digitakt MCP server now has storage tools: `list_drive`, `list_sample_slots`,
+`load_sample`, `upload_samples`, `bootstrap_kit` and `list_sounds`. They run
+`elektroid-cli` under the hood. **Prefer the tools.** Drop to the raw CLI only for
+things they don't cover yet (projects, sound files, the Digitone).
 
 | Job | Use | Notes |
 |---|---|---|
-| Notes, patterns, clock, CC/NRPN, sequencer trigs | MCP (`digitakt` / `digitone` servers) | plain MIDI |
-| Switch a Digitakt track to another sample **already in the project** | MCP `set_parameter(name="sample_slot", value=N, channel=T)` | verified: value N = RAM slot N |
-| List the +Drive, the project's 127 sample slots, which slot each track uses | `elektroid-cli` | read-only, safe |
-| Upload a WAV, or put a new sample on a track | `elektroid-cli` | writes to the device: ask first |
-| Digitone sounds, both machines' projects | `elektroid-cli` (`sound`, `project`, `data`) | Digitone has no samples at all |
+| Notes, patterns, clock, CC/NRPN, sequencer trigs | MCP | plain MIDI |
+| See the +Drive, slots, which slot each track plays | MCP `list_drive`, `list_sample_slots` | read-only, safe |
+| Put a sample on a track | MCP `load_sample(track, sample)` | instant for samples already in the project |
+| A new random kit | MCP `bootstrap_kit(dry_run=true)`, then without `dry_run` | only switches slots |
+| Copy a folder of WAVs onto the +Drive | MCP `upload_samples` | writes to the device: ask first |
+| Digitone sounds, projects on either machine | `elektroid-cli` (`sound`, `project`, `data`) | Digitone has no samples at all |
 
-The MCP servers can't see storage yet. Until they can, run `elektroid-cli` from the shell.
+**The AUTO channel catch (seen on hardware):** track sample changes go out as a CC on the
+track's channel. On a unit where channel 1 is also the AUTO channel, a change meant for
+track 1 lands on whichever track is active. `load_sample` and `bootstrap_kit` read the
+tracks back and warn when this happens. Pass the warning on, and suggest giving the AUTO
+channel its own number in Settings > MIDI > Channels.
 
 ## Setup
 
@@ -66,17 +74,19 @@ Goal: kick, snare, closed hat, open hat, crash and a break on tracks, picked sem
 The creator's layout is 1 kick, 2 snare, 3 tom, 4 clap, 5 cowbell, 6 closed hat, 7 open
 hat and 8 cymbal. Ask where the break should go, or use track 3 or 5.
 
-1. `ram:ls` the project slots. Bucket them by path keywords: `kick|bd`, `snare|sd|clap`,
-   `hat|hh` (closed) vs `oh|open`, `crash|cy|ride`, and `break|loop|beat`.
-2. Pick one per role at random from its bucket. Prefer slots not marked `[ used ]` to keep
-   it fresh, unless a bucket only has used ones.
-3. For each role, call the MCP: `set_parameter(name="sample_slot", value=<slot>, channel=<track>)`.
-4. Confirm with `track:ls`, then audition: `trigger_track` for each track, then a 2-bar
-   `play_pattern_with_tracks`.
-5. When a role has no candidate in the slots, look on the +Drive (`sample:ls` under
-   `drums`, `breaks`, `D&P onehits selected/...`) and offer to upload it with `track:ul`.
+1. `bootstrap_kit(dry_run=true)` and show the picks. It reads the project's slots, guesses
+   roles from names (kick, snare, clap, open hat, closed hat, crash, tom, cowbell, break),
+   and prefers slots no pattern uses yet. The default is 1 kick, 2 snare, 3 break,
+   6 closed hat, 7 open hat and 8 crash. Pass `roles` to change it, and `seed` to repeat a
+   pick.
+2. If the user likes it, run it again without `dry_run` and the same `seed`.
+3. Audition: `trigger_track` for each changed track, then a 2-bar `play_pattern_with_tracks`.
+4. For a role with no candidate, `list_drive` under `drums`, `breaks` or
+   `D&P onehits selected/...`, then offer `load_sample(track, "/that/path")`. That one
+   uploads into a free slot, with a copy in `/incoming`.
 
-Report the result as a table of track, role, slot and path, so the user can undo it.
+Report the result as a table of track, role, slot and the "was slot", so the user can
+undo it with `load_sample(track, <old slot>)`.
 
 ## Recipe: Cipher packs onto the device
 
@@ -86,8 +96,10 @@ normalized and named by role (`drum loop 2bar 89bpm`, `bass loop 1bar 123bpm`). 
 +Drive already has a `/cipher/<song date>/` tree from earlier transfers.
 
 1. List the pack folder locally and show the user what's in it.
-2. With their OK: `sample:mkdir "1:/cipher/<song>"`, then `sample:ul` each file into it.
-3. To audition right away, `track:ul` the chosen files onto tracks instead, then play them.
+2. With their OK: `upload_samples(local_path="<pack>", drive_folder="/cipher")`. It
+   keeps one subfolder per song. The `load_cipher_pack` prompt does all of this.
+3. To audition, `load_sample(track, "/cipher/<song>/<name>")` for the ones they want,
+   then play them. Anything not already in a slot goes into a free one.
 
 Cipher's **Chain** export makes equal-slice sample chains. The original Digitakt has no
 slice mode, so play a slice by setting `sample_start` before each hit. With N equal slices,
