@@ -31,3 +31,6 @@ ENV/
 
 # Harness API keys
 .env
+
+# Personal Claude Code settings
+.claude/settings.local.json

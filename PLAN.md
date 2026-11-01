@@ -168,7 +168,7 @@ a Digitakt II spec ever lands, where its expectations become correct).
       tokens per server.
 - [ ] **Connection resilience.** Reconnect when the device is power-cycled instead of
       failing until restart.
-- [ ] **Token budget test** — assert the tool schema stays under ~6k tokens per server.
+- [ ] **Token budget test** — assert the tool schema stays under ~7.5k tokens per server.
 
 ### Low / future
 
