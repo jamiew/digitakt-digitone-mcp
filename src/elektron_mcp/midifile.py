@@ -21,22 +21,32 @@ def _append_notes(
 ) -> int:
     """Append [beat, note, velocity, duration] rows as note on/off pairs.
 
-    Rows are delta-timed, so they must be written in beat order.
+    Notes can overlap (chords, drum hits on the same beat), so every on and off is
+    placed at its absolute tick first and only then turned into delta times.
     """
-    current_tick = 0
+    # (tick, 0 for off / 1 for on, message): offs sort first at a shared tick, so a
+    # repeated note ends before it restarts.
+    timed: list[tuple[int, int, mido.Message]] = []
 
-    for row in sorted(notes, key=lambda r: r[0]):
+    for row in notes:
         beat, note = row[0], int(row[1])
         velocity = int(row[2]) if len(row) > 2 else 100
         duration = float(row[3]) if len(row) > 3 else default_duration
 
-        tick = int(beat * ticks_per_beat)
-        # Seconds -> ticks: duration * (beats per second) * ticks per beat.
-        duration_ticks = int(duration * ticks_per_beat * bpm / 60)
+        tick = max(0, int(beat * ticks_per_beat))
+        # Seconds -> ticks: duration * (beats per second) * ticks per beat. At least one
+        # tick, or the off would sort before its own on.
+        duration_ticks = max(1, int(duration * ticks_per_beat * bpm / 60))
 
-        track.append(mido.Message("note_on", channel=channel, note=note, velocity=velocity, time=tick - current_tick))
-        track.append(mido.Message("note_off", channel=channel, note=note, velocity=0, time=duration_ticks))
-        current_tick = tick + duration_ticks
+        timed.append((tick, 1, mido.Message("note_on", channel=channel, note=note, velocity=velocity)))
+        timed.append((tick + duration_ticks, 0, mido.Message("note_off", channel=channel, note=note, velocity=0)))
+
+    timed.sort(key=lambda entry: entry[:2])
+
+    current_tick = 0
+    for tick, _, message in timed:
+        track.append(message.copy(time=tick - current_tick))
+        current_tick = tick
 
     track.append(mido.MetaMessage("end_of_track", time=0))
     return len(notes)

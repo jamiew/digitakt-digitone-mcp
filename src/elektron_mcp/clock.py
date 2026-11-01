@@ -8,6 +8,7 @@ scheduled events, then run one loop", which is what this module is.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
 import time
 from collections.abc import Awaitable, Callable, Sequence
@@ -15,6 +16,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import mido
+from mcp.server.mcpserver.exceptions import ToolError
 
 from elektron_mcp.midi import MidiConnection
 
@@ -65,6 +67,13 @@ class Event:
         return self.loop_pulses is not None and self.loop_pulses > 0
 
 
+def _check(label: str, value: int, low: int, high: int, offset: int = 0) -> None:
+    # Checked while building events, before playback sends Start; mido would otherwise
+    # raise mid-pattern with an error the client never sees.
+    if not low <= value <= high:
+        raise ToolError(f"{label} {value + offset} is out of range {low + offset}-{high + offset}")
+
+
 def note_event(
     beat: float,
     note: int,
@@ -73,6 +82,9 @@ def note_event(
     channel: int = 0,
     loop_pulses: int | None = None,
 ) -> Event:
+    _check("Note", note, 0, 127)
+    _check("Velocity", velocity, 0, 127)
+    _check("MIDI channel", channel, 0, 15, offset=1)
     return Event(
         pulse=pulses(beat),
         kind="note",
@@ -85,6 +97,9 @@ def note_event(
 
 
 def cc_event(beat: float, control: int, value: int, channel: int = 0, loop_pulses: int | None = None) -> Event:
+    _check("CC number", control, 0, 127)
+    _check("CC value", value, 0, 127)
+    _check("MIDI channel", channel, 0, 15, offset=1)
     return Event(
         pulse=pulses(beat),
         kind="cc",
@@ -93,16 +108,6 @@ def cc_event(beat: float, control: int, value: int, channel: int = 0, loop_pulse
         value=value,
         loop_pulses=loop_pulses,
     )
-
-
-def unpack(row: Sequence[float], *defaults: float) -> list[float]:
-    """Read a positional event row, filling missing trailing fields from defaults.
-
-    Patterns arrive from the LLM as ragged lists like [beat, note] or
-    [beat, note, velocity, duration]; this normalises them.
-    """
-    values = list(row) + list(defaults[len(row) - len(defaults) :]) if len(row) < len(defaults) else list(row)
-    return values[: max(len(defaults), len(row))]
 
 
 async def play(
@@ -134,7 +139,7 @@ async def play(
 
     started = False
     event_index = 0
-    began_at = time.time()
+    began_at = time.monotonic()
 
     try:
         for pulse_index in range(total_pulses):
@@ -162,19 +167,21 @@ async def play(
                     _fire(connection, event)
 
             deadline = began_at + (pulse_index + 1) * interval
-            remaining = deadline - time.time()
+            remaining = deadline - time.monotonic()
             if remaining > 0:
                 await asyncio.sleep(remaining)
 
             if progress is not None and ((pulse_index + 1) % PULSES_PER_BAR == 0 or pulse_index + 1 == total_pulses):
                 # Timing is anchored to began_at, so a slow notification doesn't push later pulses back.
                 await progress(math.ceil((pulse_index + 1) / PULSES_PER_BAR), total_bars)
-    except asyncio.CancelledError:
-        # The client gave up on the call. Without a Stop the device sits mid-pattern
-        # waiting for clock that will never come.
+    except BaseException:
+        # Cancelled by the client, or a send failed. Without a Stop the device sits
+        # mid-pattern waiting for clock that will never come.
         if started and connection.output_port is not None:
-            connection.send(mido.Message("stop"))
-            connection.log_transport("STOP (cancelled)")
+            # If the port itself failed, this send fails too; keep the original error.
+            with contextlib.suppress(Exception):
+                connection.send(mido.Message("stop"))
+                connection.log_transport("STOP (interrupted)")
         raise
 
     if send_stop and started:

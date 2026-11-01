@@ -7,15 +7,15 @@ FastMCP server from a `DeviceSpec`; each device ships its own console script so 
 cost stays per-device. Digitakt and Digitone are supported; both are on the original
 hardware, not the mk2 machines.
 
-Green: `ruff check`, `ruff format --check`, `ty check`, 71 tests, wheel builds and
+Green: `ruff check`, `ruff format --check`, `ty check`, 89 tests, wheel builds and
 imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-07-28.
 
 | | |
 |---|---|
-| Devices | Digitakt (44 tools, ~6.3k tokens), Digitone (43 tools, ~6.2k tokens) |
+| Devices | Digitakt (44 tools, ~6.3k tokens), Digitone (42 tools, ~6.2k tokens) |
 | Entry points | `digitakt-mcp`, `digitone-mcp`, both in `.mcp.json` |
 | Python | 3.11–3.14 |
-| Tests | 71, no hardware required; plus `harness/` for live LLM runs |
+| Tests | 89, no hardware required; plus `harness/` for live LLM runs |
 
 ## Architecture
 
@@ -26,9 +26,9 @@ src/elektron_mcp/
   clock.py       Event + play(); the single clock loop
   storage.py     ~/.mcp-config/<slug>/{patterns,presets,recordings}
   midifile.py    .mid writing
-  server.py      build_server(spec) + all 37 shared tools
+  server.py      build_server(spec) + all 36 shared tools
   devices/
-    digitakt.py         SPEC + 7 device tools
+    digitakt.py         SPEC + 8 device tools
     digitone.py         SPEC + 6 FM tools
     *_params.py         parameter tables (data)
     *_cc.py             CC/NRPN constants (data)

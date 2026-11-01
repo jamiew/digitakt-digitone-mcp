@@ -59,10 +59,11 @@ def register_tools(device: DeviceServer) -> None:
             connection.note_on(note, velocity, ch)
             device.log_note_on(note, velocity, ch)
 
-        await asyncio.sleep(duration)
-
-        for note in pitches:
-            connection.note_off(note, ch)
+        try:
+            await asyncio.sleep(duration)
+        finally:
+            for note in pitches:
+                connection.note_off(note, ch)
 
         names = ", ".join(note_name(n) for n in pitches)
         return f"Played chord [{names}] vel={velocity} ch={channel} for {duration}s"

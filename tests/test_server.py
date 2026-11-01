@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 
+import mido
 import pytest
 from mcp.client import Client
 
@@ -53,6 +54,11 @@ class TestCoreMidi:
         message = any_device.port.messages[0]
         assert message.type == "sysex"
         assert list(message.data) == [0x00, 0x20, 0x3C]
+
+    async def test_sysex_hex_string_may_include_framing(self, any_device):
+        await any_device.call("send_sysex", hex_string="F0 00 20 3C F7")
+
+        assert list(any_device.port.messages[0].data) == [0x00, 0x20, 0x3C]
 
 
 class TestTransport:
@@ -128,6 +134,34 @@ class TestClock:
 
         assert port.types[0] == "start"
         assert port.types[-1] == "stop"
+
+    async def test_a_failure_mid_pattern_still_stops_the_sequencer(self):
+        """A progress notification can fail if the client goes away mid-pattern."""
+        port = RecordingPort()
+        connection = MidiConnection(port_name="x", display_name="x", logger=logging.getLogger("test"))
+        connection.output_port = port
+
+        async def broken_progress(bar, total):
+            raise RuntimeError("client went away")
+
+        with pytest.raises(RuntimeError):
+            await clock.play(connection, [], bars=2, bpm=300, progress=broken_progress)
+
+        assert port.types[0] == "start"
+        assert port.types[-1] == "stop"
+
+    async def test_out_of_range_notes_are_rejected_before_start(self, any_device):
+        """mido used to raise mid-pattern, after Start, leaving the device running with no Stop."""
+        with pytest.raises(ToolError, match="Note 200 is out of range"):
+            await any_device.call("play_pattern_with_melody", notes=[[0, 60], [1, 200]], bars=1, bpm=300)
+        assert any_device.port.messages == []
+
+    async def test_bad_channel_keys_are_explained(self, any_device):
+        with pytest.raises(ToolError, match="channel numbers 1-16"):
+            await any_device.call("play_pattern_with_multi_channel_midi", midi_channels={"bass": [[0, 40]]})
+        with pytest.raises(ToolError, match="MIDI channel 17 is out of range 1-16"):
+            await any_device.call("play_pattern_with_multi_channel_midi", midi_channels={"17": [[0, 40]]})
+        assert any_device.port.messages == []
 
 
 class TestParameters:
@@ -220,6 +254,18 @@ class TestPatterns:
         with pytest.raises(ToolError, match="not found"):
             await any_device.call("load_pattern", pattern_name="nope")
 
+    @pytest.mark.parametrize("name", ["../escaped", "sub/p", "..", ""])
+    async def test_names_cannot_leave_the_data_directory(self, any_device, name):
+        with pytest.raises(ToolError, match="Invalid name"):
+            await any_device.call(
+                "save_pattern", pattern_name=name, bpm=120, bars=1, track_triggers=[], midi_channels={}
+            )
+        with pytest.raises(ToolError, match="Invalid name"):
+            await any_device.call("delete_pattern", pattern_name=name)
+
+        storage_root = any_device.device.storage.patterns.parent.parent
+        assert not list(storage_root.rglob("*.json"))
+
 
 class TestExport:
     async def test_export_pattern_writes_a_midi_file(self, any_device):
@@ -233,6 +279,36 @@ class TestExport:
         )
 
         assert any_device.device.storage.recording_path("out").exists()
+
+    async def test_simultaneous_notes_export_at_the_right_times(self, any_device):
+        """Rows were written one after another, so a chord or two hits on one beat gave a
+        negative delta time and the export failed."""
+        await any_device.call(
+            "export_pattern_to_midi",
+            filename="out",
+            bpm=120,
+            track_triggers=[[0, 1, 100], [0, 2, 100]],
+            melody_notes=[[0, 60, 100, 1.0], [0, 64, 100, 1.0], [1, 67, 100, 0.25]],
+        )
+
+        midi = mido.MidiFile(any_device.device.storage.recording_path("out"))
+        melody = midi.tracks[2]
+        ticks = 0
+        timeline = []
+        for message in melody:
+            ticks += message.time
+            if message.type in ("note_on", "note_off"):
+                timeline.append((ticks, message.type, message.note))
+        # At 120 BPM a beat is 0.5s: the 1s chord lasts 2 beats and outlasts the note at beat 1.
+        beat = midi.ticks_per_beat
+        assert timeline == [
+            (0, "note_on", 60),
+            (0, "note_on", 64),
+            (beat, "note_on", 67),
+            (beat * 3 // 2, "note_off", 67),
+            (beat * 2, "note_off", 60),
+            (beat * 2, "note_off", 64),
+        ]
 
 
 class TestResources:

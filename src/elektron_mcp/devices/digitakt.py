@@ -11,9 +11,10 @@ import asyncio
 from typing import Annotated
 
 from mcp.server.mcpserver import Context
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
-from elektron_mcp import clock
+from elektron_mcp import clock, midifile
 from elektron_mcp.clock import note_event
 from elektron_mcp.device import DeviceSpec, parse_parameters
 from elektron_mcp.devices.digitakt_cc import get_param_name
@@ -22,6 +23,7 @@ from elektron_mcp.midi import note_name
 from elektron_mcp.server import (
     PLAYS,
     SETS,
+    WRITES,
     Bars,
     Bpm,
     Channel,
@@ -69,9 +71,11 @@ def register_tools(device: DeviceServer) -> None:
 
         connection.note_on(note, velocity, ch)
         device.log_note_on(note, velocity, ch)
-        await asyncio.sleep(duration)
-        connection.note_off(note, ch)
-        device.log_note_off(note, ch)
+        try:
+            await asyncio.sleep(duration)
+        finally:
+            connection.note_off(note, ch)
+            device.log_note_off(note, ch)
 
         return f"Triggered Track {track} (note {note}, velocity {velocity}) on channel {channel} for {duration}s"
 
@@ -145,8 +149,6 @@ def register_tools(device: DeviceServer) -> None:
 
         Beat positions are quarter notes: 0 is the downbeat, 1 is beat 2.
         """
-        device.history.tracks = {"bpm": bpm, "triggers": triggers}
-
         events = [
             note_event(
                 beat=row[0],
@@ -156,10 +158,25 @@ def register_tools(device: DeviceServer) -> None:
             )
             for row in triggers
         ]
+        device.history.tracks = {"bpm": bpm, "triggers": triggers}
 
         device.logger.info(f"▶️  PLAY PATTERN: {bars} bars @ {bpm} BPM, {len(triggers)} triggers")
         await clock.play(connection, events, bars=bars, bpm=bpm, send_stop=send_stop, progress=bar_progress(ctx))
         return f"Played {bars} bars at {bpm} BPM with {len(triggers)} track triggers"
+
+    @device.tool(WRITES)
+    def save_last_pattern(
+        filename: Annotated[str, Field(description="Output filename; .mid is added if missing.")],
+    ) -> str:
+        """Save the most recently played track pattern to a MIDI file."""
+        tracks = device.history.tracks
+        if not tracks:
+            raise ToolError("No pattern has been played yet. Use play_pattern_with_tracks first.")
+
+        path = device.storage.recording_path(filename)
+        notes = [[row[0], int(row[1]) - 1, row[2] if len(row) > 2 else 100, 0.1] for row in tracks["triggers"]]
+        count = midifile.write_notes(path, bpm=tracks["bpm"], notes=notes, channel=0, track_name="Drums")
+        return f"Saved pattern to {path} ({count} triggers at {tracks['bpm']} BPM)"
 
     @device.tool(PLAYS)
     async def play_pattern_with_tracks_and_melody(

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mcp.server.mcpserver.exceptions import ToolError
+
 CONFIG_ROOT = Path.home() / ".mcp-config"
 
 
@@ -36,13 +38,20 @@ class Storage:
     # ----------------------------------------------------------------- helpers
 
     def pattern_path(self, name: str) -> Path:
-        return self.patterns / f"{_strip_suffix(name, '.json')}.json"
+        return self.patterns / f"{_strip_suffix(_file_name(name), '.json')}.json"
 
     def preset_path(self, name: str) -> Path:
-        return self.presets / f"{_strip_suffix(name, '.json')}.json"
+        return self.presets / f"{_strip_suffix(_file_name(name), '.json')}.json"
 
     def recording_path(self, name: str) -> Path:
-        return self.recordings / _ensure_suffix(name, ".mid")
+        return self.recordings / _ensure_suffix(_file_name(name), ".mid")
+
+
+def _file_name(name: str) -> str:
+    """Names come from the model, so refuse anything that would leave the data directory."""
+    if not name or name in (".", "..") or Path(name).name != name:
+        raise ToolError(f"Invalid name {name!r}: use a plain file name, without folders.")
+    return name
 
 
 def _strip_suffix(name: str, suffix: str) -> str:
