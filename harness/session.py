@@ -17,6 +17,7 @@ from mcp.client.stdio import StdioServerParameters
 from mcp.types import TextContent, Tool
 
 from elektron_mcp.devices import DEVICES
+from elektron_mcp.elektroid import Elektroid, ElektroidError
 from elektron_mcp.server import build_server
 from harness.providers import Provider, ToolCall, ToolOutcome
 
@@ -87,6 +88,10 @@ class Session:
         return {name: prop["default"] for name, prop in properties.items() if "default" in prop}
 
 
+async def _no_storage(args: list[str], timeout: float) -> str:
+    raise ElektroidError("The +Drive and sample slots aren't available in --dry-run.")
+
+
 @asynccontextmanager
 async def connect(device: str, *, dry_run: bool) -> AsyncGenerator[Session]:
     if not dry_run:
@@ -99,6 +104,8 @@ async def connect(device: str, *, dry_run: bool) -> AsyncGenerator[Session]:
         server = build_server(DEVICES[device], storage_root=Path(storage))
         port = CapturePort()
         server.connection.output_port = port
+        # A dry run must not touch the real device, and elektroid would.
+        server.elektroid = Elektroid(server.spec.port_name, runner=_no_storage)
         async with Client(server.mcp) as client:
             yield Session(client, device, (await client.list_tools()).tools, dry_run=True)
         print(paint(f"(dry run captured {len(port.messages)} MIDI messages)", "2"))

@@ -60,6 +60,11 @@ async def chat(session: Session, args: argparse.Namespace) -> None:
 async def test(session: Session, args: argparse.Namespace) -> int:
     name = args.provider
     scenarios = [s for s in SCENARIOS[session.device] if not args.only or args.only in s.name]
+    if session.dry_run:
+        skipped = [s.name for s in scenarios if s.hardware_only]
+        scenarios = [s for s in scenarios if not s.hardware_only]
+        if skipped:
+            print(paint(f"(dry run: skipping {', '.join(skipped)}, which need the device's storage)", "2"))
     failed = 0
 
     for scenario in scenarios:

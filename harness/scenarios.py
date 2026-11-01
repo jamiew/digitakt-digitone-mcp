@@ -52,6 +52,8 @@ class Scenario:
     prompt: str
     requires: list[list[Expect]]
     """Every group must be satisfied by at least one of its Expects."""
+    hardware_only: bool = False
+    """Needs the real device's storage (elektroid), so --dry-run skips it."""
 
     def failures(self, outcomes: list[ToolOutcome]) -> list[str]:
         return [
@@ -140,6 +142,24 @@ DIGITAKT = [
     ),
     UNKNOWN_PARAMETER,
     PATTERN_FILES,
+    Scenario(
+        "kit-overview",
+        "What sample is each Digitakt track playing right now?",
+        [any_of(Expect("list_sample_slots"))],
+        hardware_only=True,
+    ),
+    Scenario(
+        "kit-preview",
+        "Suggest a fresh drum kit from the project's samples, but don't change any tracks yet.",
+        [any_of(Expect("bootstrap_kit", {"dry_run": True}))],
+        hardware_only=True,
+    ),
+    Scenario(
+        "drive-browse",
+        "What folders are at the top of the +Drive?",
+        [any_of(Expect("list_drive", {"path": "/"}))],
+        hardware_only=True,
+    ),
 ]
 
 DIGITONE = [
@@ -170,6 +190,12 @@ DIGITONE = [
     ),
     UNKNOWN_PARAMETER,
     PATTERN_FILES,
+    Scenario(
+        "sound-pool",
+        "List the saved sounds in bank A.",
+        [any_of(Expect("list_sounds", {"bank": "A"}))],
+        hardware_only=True,
+    ),
 ]
 
 SCENARIOS = {"digitakt": DIGITAKT, "digitone": DIGITONE}
