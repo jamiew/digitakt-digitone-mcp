@@ -1057,6 +1057,8 @@ def _register_export(device: DeviceServer) -> None:
 # ============================================================================
 # RECORDING
 # ============================================================================
+_SUMMARIZED_MIDI_TYPES = frozenset({"active_sensing", "clock"})
+_MONITOR_EVENT_LIMIT = 50
 
 
 def _register_recording(device: DeviceServer) -> None:
@@ -1071,17 +1073,31 @@ def _register_recording(device: DeviceServer) -> None:
         port = connection.require_input()
         device.logger.info(f"👂 MONITORING MIDI INPUT for {duration} seconds...")
 
-        messages: list[str] = []
+        counts: dict[str, int] = {}
+        events: list[str] = []
+        total = 0
         started = time.time()
         while time.time() - started < duration:
             for message in port.iter_pending():
-                messages.append(f"{time.time() - started:.2f}s: {message}")
-                device.logger.info(f"📥 {message}")
+                total += 1
+                counts[message.type] = counts.get(message.type, 0) + 1
+                if message.type not in _SUMMARIZED_MIDI_TYPES:
+                    if len(events) < _MONITOR_EVENT_LIMIT:
+                        events.append(f"{time.time() - started:.2f}s: {message}")
+                    device.logger.info(f"📥 {message}")
             await asyncio.sleep(0.01)
 
-        if not messages:
+        if not total:
             return f"No MIDI messages received in {duration} seconds"
-        return f"Received {len(messages)} messages:\n" + "\n".join(messages[:50])
+
+        summary = ", ".join(f"{message_type}={count}" for message_type, count in sorted(counts.items()))
+        result = [f"Received {total} messages ({summary})."]
+        if events:
+            result += ["Events:", *events]
+        omitted = total - sum(counts.get(message_type, 0) for message_type in _SUMMARIZED_MIDI_TYPES) - len(events)
+        if omitted:
+            result.append(f"{omitted} additional non-realtime events omitted.")
+        return "\n".join(result)
 
     @device.tool(WRITES)
     async def record_midi_input(
