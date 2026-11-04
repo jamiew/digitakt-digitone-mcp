@@ -325,6 +325,19 @@ class TestResources:
         assert len(parameters) == len(any_device.device.spec.parameters)
         assert all("range" in entry for entry in parameters.values())
 
+    async def test_songwriting_guide_is_available_without_tool_schema_bloat(self, any_device):
+        guide = await any_device.read("songwriting://guide")
+
+        assert "## Shared workflow" in guide
+        assert "### Hip-hop" in guide
+        assert "### Techno and house" in guide
+
+    async def test_songwriting_prompts_are_registered(self, any_device):
+        async with Client(any_device.device.mcp) as client:
+            prompts = {prompt.name for prompt in (await client.list_prompts()).prompts}
+
+        assert {"arrange_song", "diagnose_groove"} <= prompts
+
 
 class TestConnection:
     async def test_disconnected_tools_tell_the_client_why(self, any_device):

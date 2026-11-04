@@ -22,7 +22,7 @@ from mcp.types import Tool as MCPTool
 from mcp.types import ToolAnnotations
 from pydantic import Field, WithJsonSchema
 
-from elektron_mcp import clock, midifile
+from elektron_mcp import clock, midifile, songwriting
 from elektron_mcp.clock import Event, cc_event, note_event
 from elektron_mcp.device import DeviceSpec, Parameter
 from elektron_mcp.elektroid import Elektroid
@@ -73,7 +73,9 @@ def _instructions(spec: DeviceSpec) -> str:
         f"Controls an Elektron {spec.display_name} over USB MIDI. {spec.notes}\n"
         "Channels are 1-16 as shown on the device. Beats are quarter notes counted from 0 (4 per bar). "
         f"list_parameters gives parameter names; the midi://{spec.slug}/parameters resource has CC/NRPN "
-        "numbers and ranges. 'Not connected' errors mean the device wasn't on USB when the server started."
+        "numbers and ranges. The songwriting://guide resource covers composition, arrangement, groove, genre "
+        "lenses, and pattern-machine structure. 'Not connected' errors mean the device wasn't on USB when the "
+        "server started."
     )
 
 
@@ -216,6 +218,7 @@ def build_server(spec: DeviceSpec, *, storage_root=None) -> DeviceServer:
     _register_export(device)
     _register_recording(device)
     _register_resources(device)
+    songwriting.register(device.mcp)
 
     if spec.register_tools is not None:
         spec.register_tools(device)

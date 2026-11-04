@@ -211,13 +211,15 @@ Digitakt adds `trigger_track`, `set_trig_note`, `set_trig_velocity`, `set_trig_l
 Digitone adds `play_chord`, `set_algorithm`, `set_ratios`, `set_operator_levels`,
 `set_operator_envelope`, `set_chorus`. Both have `list_sounds`.
 
-Each server also exposes three resources: `midi://ports`, `midi://<device>/status`, and
-`midi://<device>/parameters` (the full parameter table as JSON, so the model can look up
-names on demand instead of carrying them in every tool description).
+Each server exposes `midi://ports`, `midi://<device>/status`,
+`midi://<device>/parameters`, and `songwriting://guide`. The parameter resource keeps the
+full device map out of every tool description. The songwriting guide provides compact,
+cited arrangement guidance for hip-hop, pop, disco/funk, techno/house, and rock.
 
-Every tool carries MCP annotations, so clients can tell a note from a change that
-overwrites a sound. Playback tools report progress once per bar, and cancelling one sends
-MIDI Stop so the device doesn't hang mid-pattern.
+The shared `arrange_song` and `diagnose_groove` prompts turn that guidance into concrete
+pattern and groove reviews. Every tool carries MCP annotations, so clients can tell a
+note from a change that overwrites a sound. Playback tools report progress once per bar,
+and cancelling one sends MIDI Stop so the device doesn't hang mid-pattern.
 
 ### Where data goes
 
@@ -355,6 +357,12 @@ Digitone:
 - "Play one bar of bass on track 2 at 120 BPM: C2 on every eighth note, G1 on the last two."
 - "Turn the chorus mix up to 90 and the depth to 60."
 - "Give track 3 a bell sound with a non-integer A ratio, then play a C major arpeggio on it."
+
+Songwriting:
+
+- "Arrange this four-bar loop into a 64-bar hip-hop track with one foreground voice at a time."
+- "Diagnose why this kick, snare, and bass pattern feels stiff, then suggest the smallest groove changes."
+- "Turn this breakdown into a three-bar dance build plus a one-bar transition."
 
 ## Samples and the +Drive
 
