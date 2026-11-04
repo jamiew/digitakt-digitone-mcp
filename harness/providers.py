@@ -101,16 +101,23 @@ class AnthropicProvider:
             {"name": t.name, "description": t.description or "", "input_schema": t.input_schema} for t in tools
         ]
         # Tools and system prompt are identical on every request; cache them.
-        self.tools[-1]["cache_control"] = {"type": "ephemeral"}
+        if self.tools:
+            self.tools[-1]["cache_control"] = {"type": "ephemeral"}
         self.messages: list[Any] = []
 
     def add_user(self, text: str) -> None:
         self.messages.append({"role": "user", "content": text})
 
     async def complete(self) -> Reply:
-        response = await self.client.messages.create(
-            model=self.model, max_tokens=MAX_TOKENS, system=self.system, tools=self.tools, messages=self.messages
-        )
+        request: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": MAX_TOKENS,
+            "system": self.system,
+            "messages": self.messages,
+        }
+        if self.tools:
+            request["tools"] = self.tools
+        response = await self.client.messages.create(**request)
         self.messages.append({"role": "assistant", "content": response.content})
         text = "".join(block.text for block in response.content if block.type == "text")
         calls = [
@@ -155,13 +162,15 @@ class OpenAIProvider:
         self.pending.append({"role": "user", "content": text})
 
     async def complete(self) -> Reply:
-        response = await self.client.responses.create(
-            model=self.model,
-            instructions=self.system,
-            input=self.pending,
-            tools=self.tools,
-            previous_response_id=self.previous_id,
-        )
+        request: dict[str, Any] = {
+            "model": self.model,
+            "instructions": self.system,
+            "input": self.pending,
+            "previous_response_id": self.previous_id,
+        }
+        if self.tools:
+            request["tools"] = self.tools
+        response = await self.client.responses.create(**request)
         self.pending = []
         self.previous_id = response.id
         calls = [
@@ -193,9 +202,14 @@ class ChatCompletionsProvider:
         self.messages.append({"role": "user", "content": text})
 
     async def complete(self) -> Reply:
-        response = await self.client.chat.completions.create(
-            model=self.model, messages=self.messages, tools=self.tools, max_completion_tokens=MAX_TOKENS
-        )
+        request: dict[str, Any] = {
+            "model": self.model,
+            "messages": self.messages,
+            "max_completion_tokens": MAX_TOKENS,
+        }
+        if self.tools:
+            request["tools"] = self.tools
+        response = await self.client.chat.completions.create(**request)
         message = response.choices[0].message
         self.messages.append(message.model_dump(exclude_none=True))
         calls = [

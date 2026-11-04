@@ -213,13 +213,16 @@ Digitone adds `play_chord`, `set_algorithm`, `set_ratios`, `set_operator_levels`
 
 Each server exposes `midi://ports`, `midi://<device>/status`,
 `midi://<device>/parameters`, and `songwriting://guide`. The parameter resource keeps the
-full device map out of every tool description. The songwriting guide provides compact,
-cited arrangement guidance for hip-hop, pop, disco/funk, techno/house, and rock.
+full device map out of every tool description. The cited songwriting system covers applied
+theory, composition, beat-making, arrangement, genre hybrids, Cipher reference analysis,
+and intentional rule-breaking for pop/rock, indie, hip-hop, house, techno, disco, emotive
+diary-house, UK 140/dubstep, and drum & bass.
 
-The shared `arrange_song` and `diagnose_groove` prompts turn that guidance into concrete
-pattern and groove reviews. Every tool carries MCP annotations, so clients can tell a
-note from a change that overwrites a sound. Playback tools report progress once per bar,
-and cancelling one sends MIDI Stop so the device doesn't hang mid-pattern.
+The shared `arrange_song`, `diagnose_groove`, `develop_song`, `study_reference`, and
+`break_songwriting_rule` prompts turn the guide into concrete writing and review workflows.
+Every tool carries MCP annotations, so clients can tell a note from a change that overwrites
+a sound. Playback tools report progress once per bar, and cancelling one sends MIDI Stop so
+the device doesn't hang mid-pattern.
 
 ### Where data goes
 
@@ -322,6 +325,7 @@ explicitly, and `--model` overrides the default model.
 uv run python -m harness digitakt                  # chat; /reset starts over, Ctrl-D quits
 uv run python -m harness digitakt test             # scenario suite; exits 1 on any failure
 uv run python -m harness digitakt test -k filter   # just the scenarios named *filter*
+uv run python -m harness.songwriting_eval           # live writer + judge evals for the guide
 uv run python -m harness digitone --dry-run        # chat with no hardware; MIDI is captured
 uv run python -m harness digitakt call             # list tools and resources, no key needed
 uv run python -m harness digitakt call play_pattern_with_tracks \
@@ -336,6 +340,11 @@ Each scenario in `harness/scenarios.py` is a prompt plus the tool calls that wou
 it. For example, "Set the filter cutoff on track 2 to 40" passes on
 `set_parameter(name="filter_cutoff", value=40, channel=2)` or on the matching raw
 `send_cc`. To add one, copy a scenario and list the calls that would count as success.
+
+`harness.songwriting_eval` gives the complete guide to a live writer model, then asks a
+fresh live judge to grade six cases: indie-pop contrast, hip-hop vocal space, emotive
+house, a UK 140/DnB hybrid, Cipher skepticism, and a seven-bar pre-chorus. `-k` selects
+one case; the provider and model flags work the same way as the device harness.
 
 ### Prompts to try
 
@@ -360,9 +369,11 @@ Digitone:
 
 Songwriting:
 
-- "Arrange this four-bar loop into a 64-bar hip-hop track with one foreground voice at a time."
-- "Diagnose why this kick, snare, and bass pattern feels stiff, then suggest the smallest groove changes."
-- "Turn this breakdown into a three-bar dance build plus a one-bar transition."
+- "Develop this guitar loop into a 2:40 indie-pop song. Make the chorus clearer without changing the chords."
+- "Arrange this eight-bar sample beat into a 64-bar hip-hop song with room for a rapper."
+- "Build an emotive house song around this voice memo without copying a specific artist."
+- "Study ~/dev/cipher/analysis/<song> and explain which section boundaries are evidence versus guesses."
+- "My pre-chorus resolves after seven bars. Show the normal and broken-rule versions and an A/B test."
 
 ## Samples and the +Drive
 
