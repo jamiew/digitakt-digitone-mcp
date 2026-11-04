@@ -16,8 +16,8 @@ Two servers ship today, and **you install and run them independently**:
 
 | Server | Device | Tools | ~Token cost |
 |--------|--------|-------|-------------|
-| `digitakt-mcp` | Elektron Digitakt (original) | 50 | ~6.9k |
-| `digitone-mcp` | Elektron Digitone (original) | 43 | ~6.2k |
+| `digitakt-mcp` | Elektron Digitakt (original) | 57 | ~7.5k |
+| `digitone-mcp` | Elektron Digitone (original) | 50 | ~6.8k |
 
 They share one implementation internally — a device is a `DeviceSpec` (port name, track
 count, parameter table) over a common core — but each is its own MCP server with its own
@@ -198,10 +198,28 @@ targets that channel, not a track.
 | Parameters | `list_parameters`, `set_parameter` |
 | Playback | `play_with_clock`, `play_pattern_with_melody`, `play_pattern_with_loop`, `play_pattern_with_multi_channel_midi`, `play_pattern_with_parameter_automation` |
 | Automation | `send_parameter_sweep`, `send_parameter_envelope` |
-| Patterns | `save_pattern`, `load_pattern`, `list_patterns`, `delete_pattern`, `update_pattern`, `edit_pattern_triggers`, `edit_pattern_chords` |
+| Patterns | `save_pattern`, `save_pattern_text`, `check_pattern`, `load_pattern`, `list_patterns`, `delete_pattern`, `update_pattern`, `edit_pattern_triggers`, `edit_pattern_chords` |
 | Presets | `save_automation_preset`, `load_automation_preset`, `list_automation_presets` |
 | Export | `export_pattern_to_midi`, `export_automation_to_midi`, `save_last_melody` |
 | Recording | `monitor_midi_input`, `record_midi_input`, `list_midi_recordings`, `play_midi_file` |
+| Songs | `save_song`, `list_songs`, `delete_song`, `play_pattern_text`, `stop_pattern_playback` |
+
+Text patterns use a strict, compact step language adapted from
+[KO-II Studio](https://github.com/benjaminr/mcp-koii):
+
+```text
+@bpm 96
+@swing 58
+kick: x... x... x... x...
+snare: .... x... .... x...
+hat: x.x. x.x. x.x. x.x.
+```
+
+`x`, `X`, `o`, and `1`–`9` are hits; `.` rests; `-` holds the previous hit. Digitakt
+names such as `kick`, `snare`, and `hat` map to tracks. Digitone names such as `bass` and
+`lead` map to synth tracks and can add `bass notes: C2 G1+D2`. Songs stay readable:
+`intro x2, verse+bass x4, outro`. Starting another pattern while one loops queues it for
+the next loop boundary instead of cutting the current pass short.
 
 `monitor_midi_input` summarizes MIDI Clock and Active Sensing instead of flooding the
 result, while retaining notes, CC, program changes, and other useful events.
@@ -214,9 +232,9 @@ Digitakt adds `trigger_track`, `set_trig_note`, `set_trig_velocity`, `set_trig_l
 Digitone adds `play_chord`, `set_algorithm`, `set_ratios`, `set_operator_levels`,
 `set_operator_envelope`, `set_chorus`. Both have `list_sounds`.
 
-Each server also exposes three resources: `midi://ports`, `midi://<device>/status`, and
-`midi://<device>/parameters` (the full parameter table as JSON, so the model can look up
-names on demand instead of carrying them in every tool description).
+Each server also exposes four resources: `midi://ports`, `midi://<device>/status`,
+`midi://<device>/parameters`, and `midi://<device>/live`. The live resource reports the
+current pass plus recent note, loop, queue, save, and stop events for visualizers.
 
 Every tool carries MCP annotations, so clients can tell a note from a change that
 overwrites a sound. Playback tools report progress once per bar, and cancelling one sends
@@ -225,8 +243,8 @@ MIDI Stop so the device doesn't hang mid-pattern.
 ### Where data goes
 
 ```
-~/.mcp-config/digitakt/{patterns,presets,recordings}/
-~/.mcp-config/digitone/{patterns,presets,recordings}/
+~/.mcp-config/digitakt/{patterns,songs,presets,recordings}/
+~/.mcp-config/digitone/{patterns,songs,presets,recordings}/
 ```
 
 ---
@@ -417,7 +435,7 @@ src/elektron_mcp/
   device.py      DeviceSpec + typed Parameter table
   midi.py        connection, message sending, logging
   clock.py       the one clock loop every playback tool shares
-  storage.py     patterns / presets / recordings on disk
+  storage.py     patterns / songs / presets / recordings on disk
   midifile.py    .mid writing
   server.py      build_server(spec) -> a full MCPServer
   devices/
@@ -460,6 +478,8 @@ Prior art and inspiration:
   declarative one-file-per-device model, and a reason this repo treats devices as data
 - [`TheAndrewStaker/mcp-midi-control`](https://github.com/TheAndrewStaker/mcp-midi-control)
   (Apache-2.0) — the "descriptors, not new tools" idea for keeping token cost flat
+- [`benjaminr/mcp-koii`](https://github.com/benjaminr/mcp-koii) (MIT) — strict pattern
+  notation, compact song syntax, event bus, and seamless loop-boundary switching
 - [`zerubeus/elektron-mcp`](https://github.com/ftupas/elektron-mcp) (MIT) — closest prior
   art for Digitone parameter coverage
 - [`mzero/elk-herd`](https://github.com/mzero/elk-herd) (BSD-2-Clause) — reference for

@@ -14,9 +14,10 @@ CONFIG_ROOT = Path.home() / ".mcp-config"
 
 @dataclass(frozen=True, slots=True)
 class Storage:
-    """Resolves and owns the three data directories for one device."""
+    """Resolves and owns the per-device data directories."""
 
     patterns: Path
+    songs: Path
     presets: Path
     recordings: Path
 
@@ -25,6 +26,7 @@ class Storage:
         base = (root or CONFIG_ROOT) / slug
         storage = cls(
             patterns=base / "patterns",
+            songs=base / "songs",
             presets=base / "presets",
             recordings=base / "recordings",
         )
@@ -32,13 +34,16 @@ class Storage:
         return storage
 
     def ensure(self) -> None:
-        for directory in (self.patterns, self.presets, self.recordings):
+        for directory in (self.patterns, self.songs, self.presets, self.recordings):
             directory.mkdir(parents=True, exist_ok=True)
 
     # ----------------------------------------------------------------- helpers
 
     def pattern_path(self, name: str) -> Path:
         return self.patterns / f"{_strip_suffix(_file_name(name), '.json')}.json"
+
+    def song_path(self, name: str) -> Path:
+        return self.songs / f"{_strip_suffix(_file_name(name), '.json')}.json"
 
     def preset_path(self, name: str) -> Path:
         return self.presets / f"{_strip_suffix(_file_name(name), '.json')}.json"
