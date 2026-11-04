@@ -75,8 +75,8 @@ new parameter map.
 | Server identity | Name only | `title`, `version`, and `instructions` (channels, beats, where parameters live) |
 | Progress | None | Clock-driven tools report each bar |
 | Cancellation | Device left mid-pattern | Cancelled playback sends MIDI Stop |
-| Resources | 3, no mime types | Device resources plus the cited `songwriting://guide`, now a comprehensive system for the target genres, Cipher reference studies, and intentional rule-breaking; JSON resources marked `application/json` |
-| Prompts, completions, elicitation, sampling, logging | Unused | Five songwriting prompts plus a live writer/judge eval suite. Completions and elicitation remain unused; sampling, roots and logging are deprecated in the 2026-07-28 spec |
+| Resources | 3, no mime types | Device resources plus three cited songwriting resources: the core system, practical technique encyclopedia, and conflicting expert lenses; JSON resources marked `application/json` |
+| Prompts, completions, elicitation, sampling, logging | Unused | Six songwriting prompts plus a ten-case live writer/judge eval suite. Completions and elicitation remain unused; sampling, roots and logging are deprecated in the 2026-07-28 spec |
 
 Also fixed while migrating: `play_midi_file` used `MidiFile.play()`, which blocks the
 event loop for the whole file; sync tools now run on worker threads, so `MidiConnection`

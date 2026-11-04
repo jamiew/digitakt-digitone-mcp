@@ -212,14 +212,17 @@ Digitone adds `play_chord`, `set_algorithm`, `set_ratios`, `set_operator_levels`
 `set_operator_envelope`, `set_chorus`. Both have `list_sounds`.
 
 Each server exposes `midi://ports`, `midi://<device>/status`,
-`midi://<device>/parameters`, and `songwriting://guide`. The parameter resource keeps the
-full device map out of every tool description. The cited songwriting system covers applied
-theory, composition, beat-making, arrangement, genre hybrids, Cipher reference analysis,
-and intentional rule-breaking for pop/rock, indie, hip-hop, house, techno, disco, emotive
-diary-house, UK 140/dubstep, and drum & bass.
+`midi://<device>/parameters`, `songwriting://guide`, `songwriting://techniques`, and
+`songwriting://expert-voices`. The parameter resource keeps the full device map out of
+every tool description. The songwriting resources separate the core system from a practical
+encyclopedia of fills, transitions, energy moves, harmony, and originality, plus cited and
+sometimes conflicting practitioner perspectives. They cover pop/rock, indie, hip-hop, house,
+techno, disco, emotive diary-house, UK 140/dubstep, drum & bass, genre hybrids, Cipher
+reference analysis, and intentional rule-breaking.
 
-The shared `arrange_song`, `diagnose_groove`, `develop_song`, `study_reference`, and
-`break_songwriting_rule` prompts turn the guide into concrete writing and review workflows.
+The shared `arrange_song`, `diagnose_groove`, `develop_song`, `study_reference`,
+`break_songwriting_rule`, and `design_songwriting_move` prompts turn the resources into
+concrete writing and review workflows.
 Every tool carries MCP annotations, so clients can tell a note from a change that overwrites
 a sound. Playback tools report progress once per bar, and cancelling one sends MIDI Stop so
 the device doesn't hang mid-pattern.
@@ -341,10 +344,11 @@ it. For example, "Set the filter cutoff on track 2 to 40" passes on
 `set_parameter(name="filter_cutoff", value=40, channel=2)` or on the matching raw
 `send_cc`. To add one, copy a scenario and list the calls that would count as success.
 
-`harness.songwriting_eval` gives the complete guide to a live writer model, then asks a
-fresh live judge to grade six cases: indie-pop contrast, hip-hop vocal space, emotive
-house, a UK 140/DnB hybrid, Cipher skepticism, and a seven-bar pre-chorus. `-k` selects
-one case; the provider and model flags work the same way as the device harness.
+`harness.songwriting_eval` gives all three songwriting resources to a live writer model,
+then asks a fresh live judge to grade ten cases. The suite covers section contrast, vocal
+space, genre weaving, Cipher skepticism, odd phrases, transitions, originality, mode
+changes, and hypnotic repetition. `-k` selects one case; provider and model flags work like
+the device harness.
 
 ### Prompts to try
 
@@ -374,6 +378,8 @@ Songwriting:
 - "Build an emotive house song around this voice memo without copying a specific artist."
 - "Study ~/dev/cipher/analysis/<song> and explain which section boundaries are evidence versus guesses."
 - "My pre-chorus resolves after seven bars. Show the normal and broken-rule versions and an A/B test."
+- "Replace my stock house riser with three transitions derived from the vocal and drum groove."
+- "Move this C-major chorus through a C-minor bridge, then return to the same melody."
 
 ## Samples and the +Drive
 

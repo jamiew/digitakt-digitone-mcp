@@ -15,7 +15,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from elektron_mcp.songwriting import GUIDE
+from elektron_mcp.songwriting import SYSTEM
 from harness.providers import PROVIDERS, Provider, make_provider, pick_provider
 from harness.session import REPO, paint
 
@@ -53,8 +53,9 @@ CASES = (
     ),
     Case(
         "diary-house-hybrid",
-        "Build a song around a vulnerable phone voice memo and two warm piano chords at 123 BPM. I want Fred-again-"
-        "adjacent emotional intimacy, house movement, and an indie-pop arc without copying a specific record.",
+        "Build a song around a vulnerable phone voice memo and two warm piano chords at 123 BPM. Make the memo shape "
+        "speech rhythm and harmonic timing, include a concrete source-consent check, and create Fred-again-adjacent "
+        "emotional intimacy, house movement, and an indie-pop arc without copying a specific record.",
         (
             "Names structural, groove, emotional, and borrowed-vocabulary homes for the hybrid.",
             "Makes the voice memo drive cadence, harmony, and narrative rather than serving as decoration.",
@@ -95,14 +96,62 @@ CASES = (
             "Ends with a short in-context A/B test rather than a verdict based on theory alone.",
         ),
     ),
+    Case(
+        "transition-toolkit",
+        "I have a 16-bar house buildup into a drop at 126 BPM. The stock riser and snare roll work, but they make the "
+        "song sound generic. Give me three materially different transitions built from my vocal hook and drum groove.",
+        (
+            "Diagnoses the transition's job and names the energy axes each option changes.",
+            "Gives three exact, materially different approaches, including a material-derived or negative-space move.",
+            "Specifies bar- or beat-level execution and protects kick/bass impact at the landing.",
+            "Names each option's cost and ends with a level-matched in-context test.",
+        ),
+    ),
+    Case(
+        "originality-conflict",
+        "My indie-dance demos sound like a collage of my favorite artists. Give me a four-week plan to find a more "
+        "personal combination without pretending influence can disappear.",
+        (
+            "Uses at least two specifically named, meaningfully conflicting practitioner lenses.",
+            "Turns personal sources, constraints, combinations, or performance traits into concrete weekly work.",
+            "Avoids vague advice to be authentic and avoids tracing one artist's whole style stack.",
+            "Defines a body of work and comparison method that can reveal recurring personal choices.",
+        ),
+    ),
+    Case(
+        "parallel-mode-bridge",
+        "My chorus is C major: C-G-Am-F. Design an eight-bar bridge that moves into C minor, then returns to the same "
+        "chorus melody. Give me smooth and abrupt versions with exact chords, bass, and melody notes, plus a no-mode-"
+        "change control for comparison.",
+        (
+            "Correctly distinguishes isolated modal mixture from a sustained parallel-minor shift with C still tonic.",
+            "Gives exact eight-bar smooth and abrupt alternatives with bass and melody treatment.",
+            "Uses a common tone, voice leading, direct cut, or another named mechanism accurately.",
+            "Explains the emotional cost and provides the requested no-mode-change control.",
+        ),
+    ),
+    Case(
+        "hypnotic-techno",
+        "My 32-bar techno loop gets boring, but changing clips every eight bars kills the trance. Show how to arrange "
+        "three minutes around one invariant and slow continuous changes. Address the advice that every second must be "
+        "awesome.",
+        (
+            "Names one invariant and schedules exact continuous and discrete processes over a plausible form.",
+            "Uses automation for orientation or disorientation rather than generic constant motion.",
+            "Contrasts Max Martin's attention lens with a repetition- or material-led lens without caricaturing either.",
+            "Ends with a test for hypnotic engagement that does not require novelty every eight bars.",
+        ),
+    ),
 )
 
-SUBJECT_SYSTEM = f"""You are a practical songwriting and beat-making coach. Use the guide below as your operating
-system. Diagnose before prescribing. Give exact bars, beats, roles, notes, scale degrees, mutes, or automation where
-useful. Explain why each choice works. Treat genre conventions as defaults and include intentional rule-breaking only
-with its cost, replacement cue, and test. Never claim to hear audio you were not given. Keep the answer under 700 words.
+SUBJECT_SYSTEM = f"""You are a practical songwriting and beat-making coach. Use the three resources below as your
+operating system. Diagnose before prescribing. Give exact bars, beats, roles, notes, scale degrees, mutes, or automation
+where useful. Explain why each choice works. Treat genre conventions and expert advice as testable lenses, not laws.
+When an expert lens materially changes the plan, name the practitioner and the relevant source idea; do not use
+authority as proof. Include intentional rule-breaking only with its cost, replacement cue, and test. Never claim to
+hear audio you were not given. Keep the answer under 700 words.
 
-{GUIDE}
+{SYSTEM}
 """
 
 JUDGE_SYSTEM = """You evaluate songwriting advice. Return one JSON object and nothing else:
