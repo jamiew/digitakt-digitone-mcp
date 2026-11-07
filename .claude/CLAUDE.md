@@ -6,10 +6,12 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 ## Quick Reference
 
 - **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
-- **Tests**: `uv run pytest` (144 tests, no hardware needed)
-- **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check`
-- **Live harness**: `uv run python -m harness <digitakt|digitone> [chat|test|call]`, `--dry-run` for no hardware
-- **Hardware scripts**: `scripts/hardware/` — manual, need a real device, not collected by pytest
+- **Tests**: `uv run pytest` (151 tests, no hardware needed). Playback tests use
+  `@pytest.mark.looptime` (virtual event-loop time); keep cancellation and tick-timing tests real-time
+- **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check` (ty needs `uv sync --group harness`)
+- **Live harness**: `uv sync --group harness` once (opt-in group), then
+  `uv run python -m harness <digitakt|digitone> [chat|test|call|smoke]`, `--dry-run` for no hardware
+- **Hardware smoke**: `uv run python -m harness digitakt smoke`, a fixed checklist to listen to on a real Digitakt
 - **Samples / +Drive / kit bootstrapping**: storage tools in `drive.py`, backed by `elektroid-cli`
   (`elektroid.py`). The `elektron-bridge` skill covers what the tools don't
 

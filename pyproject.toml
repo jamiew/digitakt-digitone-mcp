@@ -57,8 +57,6 @@ harness = [
 target-version = "py311"
 line-length = 120
 src = ["src", "tests", "harness"]
-# Legacy manual hardware scripts, kept for reference but not held to package standards.
-extend-exclude = ["scripts/hardware"]
 
 [tool.ruff.lint]
 select = [

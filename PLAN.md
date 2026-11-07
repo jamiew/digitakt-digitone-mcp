@@ -7,7 +7,7 @@ FastMCP server from a `DeviceSpec`; each device ships its own console script so 
 cost stays per-device. Digitakt and Digitone are supported; both are on the original
 hardware, not the mk2 machines.
 
-Green: `ruff check`, `ruff format --check`, `ty check`, 144 tests, wheel builds and
+Green: `ruff check`, `ruff format --check`, `ty check`, 151 tests, wheel builds and
 imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-07-28.
 
 | | |
@@ -15,7 +15,7 @@ imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-0
 | Devices | Digitakt (57 tools, ~7.3k tokens), Digitone (50 tools, ~6.6k tokens) |
 | Entry points | `digitakt-mcp`, `digitone-mcp`, both in `.mcp.json` |
 | Python | 3.11–3.14 |
-| Tests | 144, no hardware required; plus `harness/` for live LLM runs |
+| Tests | 151, no hardware required; plus `harness/` for live LLM runs |
 
 ## Architecture
 
@@ -70,6 +70,8 @@ new parameter map.
 - [x] KO-II-style text patterns and compact songs, with exact parser errors, end-of-loop
       switching, and a live event resource for visualizers
 - [x] Token budget test: `TestSchema` keeps each server's tool schemas under ~7.5k tokens
+- [x] Replace `scripts/hardware/` with `python -m harness digitakt smoke`, which plays the
+      same checklist through the tools. Playback tests run on looptime's virtual clock.
 
 ### MCP protocol audit (Oct 2026)
 
