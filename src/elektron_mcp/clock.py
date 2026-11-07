@@ -196,8 +196,6 @@ async def play(
                 finished_bar = math.ceil((pulse_index + 1) / PULSES_PER_BAR)
                 bar_finished.set()
     except BaseException:
-        if reporter is not None:
-            reporter.cancel()
         # Cancelled by the client, or a send failed. Without a Stop the device sits
         # mid-pattern waiting for clock that will never come.
         if started and connection.output_port is not None:
@@ -206,16 +204,22 @@ async def play(
                 connection.send(mido.Message("stop"))
                 connection.log_transport("STOP (interrupted)")
         raise
-
-    if send_stop and started:
-        connection.send(mido.Message("stop"))
-        connection.log_transport("STOP")
-
-    if reporter is not None:
-        # The clock is finished, so waiting for the last bar's notification costs no timing.
-        clock_done = True
-        bar_finished.set()
-        await reporter
+    else:
+        if send_stop and started:
+            connection.send(mido.Message("stop"))
+            connection.log_transport("STOP")
+        if reporter is not None:
+            # The clock is finished, so waiting for the last bar's notification costs no timing.
+            clock_done = True
+            bar_finished.set()
+            await reporter
+    finally:
+        # No reporter may outlive playback, however it ended. Cancelling a finished task does nothing.
+        if reporter is not None:
+            reporter.cancel()
+            await asyncio.wait([reporter])
+            if not reporter.cancelled():
+                reporter.exception()  # marks any failure as seen so asyncio doesn't log it again
 
 
 # asyncio only holds weak references to tasks, so a note-off scheduled and then

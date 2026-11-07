@@ -6,7 +6,7 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 ## Quick Reference
 
 - **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
-- **Tests**: `uv run pytest` (151 tests, no hardware needed). Playback tests use
+- **Tests**: `uv run pytest` (153 tests, no hardware needed). Playback tests use
   `@pytest.mark.looptime` (virtual event-loop time); keep cancellation and tick-timing tests real-time
 - **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check` (ty needs `uv sync --group harness`)
 - **Live harness**: `uv sync --group harness` once (opt-in group), then

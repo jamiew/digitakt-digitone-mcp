@@ -214,6 +214,36 @@ class TestClock:
         # The failure surfaces at the next bar instead of playing out all four.
         assert port.types.count("clock") == 2 * 96
 
+    @pytest.mark.looptime
+    @pytest.mark.parametrize("exit_path", ["stop fails", "cancelled"])
+    async def test_no_progress_task_outlives_playback(self, exit_path):
+        """A failed final Stop used to leave the progress reporter task running."""
+
+        class StopFailsPort(RecordingPort):
+            def send(self, message: mido.Message) -> None:
+                if message.type == "stop":
+                    raise OSError("port went away")
+                super().send(message)
+
+        connection = MidiConnection(port_name="x", display_name="x", logger=logging.getLogger("test"))
+        connection.output_port = StopFailsPort() if exit_path == "stop fails" else RecordingPort()
+
+        async def progress(bar, total):
+            pass
+
+        if exit_path == "stop fails":
+            with pytest.raises(OSError):
+                await clock.play(connection, [], bars=1, bpm=300, progress=progress)
+        else:
+            task = asyncio.create_task(clock.play(connection, [], bars=8, bpm=300, progress=progress))
+            await asyncio.sleep(1)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+        reporters = [t for t in asyncio.all_tasks() if "report_progress" in t.get_coro().__qualname__]
+        assert reporters == []
+
     async def test_out_of_range_notes_are_rejected_before_start(self, any_device):
         """mido used to raise mid-pattern, after Start, leaving the device running with no Stop."""
         with pytest.raises(ToolError, match="Note 200 is out of range"):
