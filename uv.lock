@@ -246,7 +246,6 @@ wheels = [
 name = "digitakt-digitone-mcp"
 version = "0.5.0"
 source = { editable = "." }
-default-groups = ["dev", "harness"]
 dependencies = [
     { name = "mcp" },
     { name = "mido" },

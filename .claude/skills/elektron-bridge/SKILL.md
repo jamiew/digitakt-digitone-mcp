@@ -129,6 +129,7 @@ channels 9-16. To patch it from the `digitone` MCP server, it has to be on USB i
 
 ## Testing
 
+- Run `uv sync --group harness` once; the harness dependencies are opt-in.
 - `uv run python -m harness digitakt call` lists the MCP tools without an API key.
 - `uv run python -m harness digitakt` opens a chat with the device (needs an API key).
 - See README "Testing it" for the full ladder.
