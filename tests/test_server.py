@@ -267,6 +267,11 @@ class TestPatterns:
         assert not list(storage_root.rglob("*.json"))
 
 
+def _track_hit(device, track: int) -> tuple[int, int]:
+    """(zero-based channel, note) a text-pattern tN hit sends."""
+    return (0, track - 1) if device.spec.trigger_notes else (track - 1, 60)
+
+
 class TestPatternLanguage:
     async def test_text_pattern_and_song_round_trip(self, any_device):
         first = "@bpm 300\n@grid 1/32\nt1: x"
@@ -291,7 +296,11 @@ class TestPatternLanguage:
         await asyncio.sleep(0.15)
 
         notes = any_device.port.of_type("note_on")
-        assert [message.channel for message in notes] == [0, 0, 1]
+        assert [(message.channel, message.note) for message in notes] == [
+            _track_hit(any_device.device, 1),
+            _track_hit(any_device.device, 1),
+            _track_hit(any_device.device, 2),
+        ]
 
     async def test_loop_switches_at_boundary_and_publishes_live_state(self, any_device):
         current = "@bpm 300\n@grid 1/32\nt1: x..."
@@ -309,7 +318,8 @@ class TestPatternLanguage:
         assert any(event["type"] == "queued" and event["label"] == "next" for event in live["recent"])
 
         await asyncio.sleep(0.15)
-        assert any(message.channel == 1 for message in any_device.port.of_type("note_on"))
+        sent = [(message.channel, message.note) for message in any_device.port.of_type("note_on")]
+        assert _track_hit(any_device.device, 2) in sent
         assert await any_device.call("stop_pattern_playback") == "Stopped pattern playback"
         stopped = json.loads(await any_device.read(f"midi://{any_device.device.spec.slug}/live"))
         assert stopped["current_pass"] is None

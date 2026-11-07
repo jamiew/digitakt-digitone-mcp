@@ -27,6 +27,14 @@ def test_digitakt_aliases_and_step_symbols_are_strict():
     assert track.steps == [100, 127, 50, 14, 127, 100, HOLD, None, 100, HOLD, HOLD, None]
 
 
+def test_track_targets_follow_each_device_trigger_scheme():
+    digitakt = parse_pattern("t3: x...", DIGITAKT).tracks[0].target
+    digitone = parse_pattern("t2: x...", DIGITONE).tracks[0].target
+
+    assert (digitakt.channel, digitakt.note) == (1, 2)
+    assert (digitone.channel, digitone.note) == (2, 60)
+
+
 def test_digitone_pitched_tracks_cycle_notes_and_chords():
     pattern = parse_pattern("bass: x.x.x.\nbass notes: C2 G1+D2", DIGITONE)
     note_ons = [event for event in compile_pattern(pattern) if event.kind == NOTE_ON]

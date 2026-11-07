@@ -178,8 +178,10 @@ def parse_target(text: str, spec: DeviceSpec) -> Target | None:
     if match:
         track = int(match.group(1))
         if 1 <= track <= spec.track_count:
-            note = track - 1 if spec.trigger_notes else 60
-            return Target("trigger", channel=track, note=note, label=f"t{track}")
+            # Trigger-note devices fire track N with note N-1 on channel 1, like trigger_track.
+            if spec.trigger_notes:
+                return Target("trigger", channel=1, note=track - 1, label=f"t{track}")
+            return Target("trigger", channel=track, note=60, label=f"t{track}")
         return None
     match = _CHANNEL_RE.match(text)
     if match and 1 <= int(match.group(1)) <= 16:
