@@ -39,15 +39,15 @@ packages = ["src/elektron_mcp"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.17.3",
+    "ruff>=0.17.4",
     "pytest>=9.2.0",
-    "pytest-asyncio>=1.4.1",
-    "ty>=0.0.93",
+    "pytest-asyncio>=1.4.1.post1",
+    "ty>=0.0.99",
 ]
 # The live LLM test harness in harness/. Not needed to run the MCP servers.
 harness = [
-    "anthropic>=2.3.0",
-    "openai>=3.40.0",
+    "anthropic>=2.6.0",
+    "openai>=3.46.0",
     "python-dotenv>=1.2.4",
 ]
 

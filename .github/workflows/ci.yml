@@ -17,7 +17,7 @@ jobs:
       # python-rtmidi only ships wheels up to 3.12, so newer Pythons build it from
       # source against the ALSA headers.
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
       - run: uv sync --dev
@@ -39,7 +39,7 @@ jobs:
       # python-rtmidi only ships wheels up to 3.12, so newer Pythons build it from
       # source against the ALSA headers.
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
@@ -55,7 +55,7 @@ jobs:
       # python-rtmidi only ships wheels up to 3.12, so newer Pythons build it from
       # source against the ALSA headers.
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
       - name: Build wheel and sdist
