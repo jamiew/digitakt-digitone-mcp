@@ -95,7 +95,6 @@ class PatternPlayer:
             running = self._thread is not None and self._thread.is_alive()
             queued_behind = self._current if running and self._current is not None and self._current.loop else None
             if queued_behind is not None:
-                program.loop = True
                 self._pending = program
                 remaining = max(0.0, self._cycle_start + queued_behind.duration - self._clock())
         if queued_behind is not None:

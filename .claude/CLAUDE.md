@@ -6,7 +6,7 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 ## Quick Reference
 
 - **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
-- **Tests**: `uv run pytest` (142 tests, no hardware needed)
+- **Tests**: `uv run pytest` (144 tests, no hardware needed)
 - **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check`
 - **Live harness**: `uv run python -m harness <digitakt|digitone> [chat|test|call]`, `--dry-run` for no hardware
 - **Hardware scripts**: `scripts/hardware/` — manual, need a real device, not collected by pytest

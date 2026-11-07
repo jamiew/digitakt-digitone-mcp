@@ -336,6 +336,18 @@ class TestPatternLanguage:
         stopped = json.loads(await any_device.read(f"midi://{any_device.device.spec.slug}/live"))
         assert stopped["current_pass"] is None
 
+    async def test_a_queued_pattern_without_loop_plays_once_then_stops(self, any_device):
+        """Queued material used to be forced to loop, ignoring loop=False."""
+        await any_device.call("save_pattern_text", pattern_name="current", text="@bpm 300\n@grid 1/8\nt1: x...")
+        await any_device.call("save_pattern_text", pattern_name="next", text="@bpm 300\n@grid 1/32\nt2: x...")
+
+        await any_device.call("play_pattern_text", what="current", loop=True)
+        assert (await any_device.call("play_pattern_text", what="next")).startswith("Queued")
+
+        await _until(lambda: any_device.device.player.status is None)
+        hits = [(m.channel, m.note) for m in any_device.port.of_type("note_on")]
+        assert hits.count(_track_hit(any_device.device, 2)) == 1
+
     async def test_text_pattern_errors_keep_line_and_column(self, any_device):
         with pytest.raises(ToolError, match=r"line 1, col 5.*hold"):
             await any_device.call("check_pattern", text="t1: -..q")
