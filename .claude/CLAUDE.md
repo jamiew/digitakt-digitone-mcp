@@ -6,7 +6,7 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 ## Quick Reference
 
 - **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
-- **Tests**: `uv run pytest` (114 tests, no hardware needed)
+- **Tests**: `uv run pytest` (133 tests, no hardware needed)
 - **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check`
 - **Live harness**: `uv run python -m harness <digitakt|digitone> [chat|test|call]`, `--dry-run` for no hardware
 - **Hardware scripts**: `scripts/hardware/` — manual, need a real device, not collected by pytest
@@ -17,10 +17,12 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 
 | File | Purpose |
 |------|---------|
-| `src/elektron_mcp/server.py` | `build_server(spec)` + the 36 shared tools |
+| `src/elektron_mcp/server.py` | `build_server(spec)` + the 43 shared tools |
 | `src/elektron_mcp/device.py` | `DeviceSpec`, typed `Parameter`, `parse_parameters` |
 | `src/elektron_mcp/midi.py` | `MidiConnection` — ports, sending, logging |
 | `src/elektron_mcp/clock.py` | `Event` + `play()`; the one clock loop |
+| `src/elektron_mcp/pattern_language.py` | Strict text pattern notation and compact song arrangements |
+| `src/elektron_mcp/live.py` | Background text-pattern player that switches at loop boundaries; event history for `midi://<device>/live` |
 | `src/elektron_mcp/devices/digitakt.py` | Digitakt spec + its 8 device-specific tools |
 | `src/elektron_mcp/devices/digitone.py` | Digitone spec + its 6 FM tools |
 | `src/elektron_mcp/devices/*_params.py` | Parameter tables (data) |
@@ -87,14 +89,15 @@ LLM scenario suite against the real server. `call` runs single tools with no key
 ## Data Storage
 
 All user data in `~/.mcp-config/digitakt/`:
-- `patterns/` - Saved pattern JSON files
+- `patterns/` - Saved pattern JSON files (structured or text notation)
+- `songs/` - Saved text-pattern arrangements
 - `presets/` - Automation preset JSON files
 - `recordings/` - Recorded MIDI files
 
 ## Token Budget
 
-Model-facing tool schemas (name + description + input schema) are ~6.9k tokens for the
-Digitakt and ~6.2k for the Digitone
+Model-facing tool schemas (name + description + input schema) are ~7.3k tokens for the
+Digitakt and ~6.6k for the Digitone
 by a chars/4 estimate, now that parameter descriptions actually reach the schema. Keep
 under ~7.5k. `ElektronMCPServer.list_tools` strips pydantic's auto titles (~1k tokens).
 When compressing docstrings, aim for <100 tokens per tool.

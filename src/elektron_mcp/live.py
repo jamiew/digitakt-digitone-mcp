@@ -1,4 +1,4 @@
-"""Thread-safe live events and seamless background pattern playback.
+"""Live playback events and seamless background pattern playback.
 
 Adapted from koii studio's events and player modules:
 https://github.com/benjaminr/mcp-koii
@@ -8,20 +8,16 @@ See THIRD_PARTY_NOTICES.md.
 
 from __future__ import annotations
 
-import queue
 import threading
 import time
 from collections import deque
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
 import mido
 
 from elektron_mcp.pattern_language import Section, timeline
-
-_REMEMBERED_TYPES = {"queued", "pass", "stopped", "pattern_saved", "song_saved"}
 
 
 class _NoteMessage(Protocol):
@@ -35,39 +31,22 @@ _SPIN_SECONDS = 0.002
 
 
 class EventBus:
-    """Small publish/subscribe bus that never lets a slow viewer block MIDI."""
+    """Recent playback and storage events, kept for the live resource to poll."""
 
-    def __init__(self, history: int = 100, queue_size: int = 2000):
+    def __init__(self, history: int = 100):
         self._lock = threading.Lock()
-        self._subscribers: set[queue.Queue] = set()
         self._history: deque[dict[str, Any]] = deque(maxlen=history)
-        self._queue_size = queue_size
         self._current_pass: dict[str, Any] | None = None
 
     def publish(self, event_type: str, **data: Any) -> dict[str, Any]:
         event = {"type": event_type, "time": time.time(), **data}
         with self._lock:
-            if event_type in _REMEMBERED_TYPES:
-                self._history.append(event)
+            self._history.append(event)
             if event_type == "pass":
                 self._current_pass = event
             elif event_type == "stopped":
                 self._current_pass = None
-            subscribers = tuple(self._subscribers)
-        for subscriber in subscribers:
-            with suppress(queue.Full):
-                subscriber.put_nowait(event)
         return event
-
-    def subscribe(self) -> queue.Queue:
-        subscriber: queue.Queue = queue.Queue(maxsize=self._queue_size)
-        with self._lock:
-            self._subscribers.add(subscriber)
-        return subscriber
-
-    def unsubscribe(self, subscriber: queue.Queue) -> None:
-        with self._lock:
-            self._subscribers.discard(subscriber)
 
     def snapshot(self) -> dict[str, Any]:
         """State for a visualizer that opens after playback has started."""
@@ -169,29 +148,16 @@ class PatternPlayer:
 
     def _emit(self, message: mido.Message) -> None:
         note_message = cast(_NoteMessage, message)
-        channel = note_message.channel
-        note = note_message.note
-        velocity = note_message.velocity
-        key = (channel, note)
-        is_on = note_message.type == "note_on" and velocity > 0
-        if is_on:
+        key = (note_message.channel, note_message.note)
+        if note_message.type == "note_on" and note_message.velocity > 0:
             self._active.add(key)
         else:
             self._active.discard(key)
         self._send(message)
-        self._events.publish(
-            "note",
-            on=is_on,
-            note=note,
-            channel=channel + 1,
-            velocity=velocity,
-        )
 
     def _release_all(self) -> None:
         for channel, note in sorted(self._active):
-            message = mido.Message("note_off", note=note, velocity=0, channel=channel)
-            self._send(message)
-            self._events.publish("note", on=False, note=note, channel=channel + 1, velocity=0)
+            self._send(mido.Message("note_off", note=note, velocity=0, channel=channel))
         self._active.clear()
 
     def _announce_pass(self, program: _Program, start: float) -> None:

@@ -246,11 +246,11 @@ outro</pre></article>
       <article class="trick"><h3>3 · Iterate without a glitch</h3><p>Play a new pattern while another loops. The current pass finishes, active notes release, and the queued pattern starts on the next boundary.</p><pre>current loop  ━━━━━━━━━│
 queued next             └━━━━━━━━
                        exact boundary</pre></article>
-      <article class="trick"><h3>4 · Render real events</h3><p>The internal event bus publishes passes, notes, queues, saves, and stops. MCP clients can poll the snapshot without touching playback.</p><pre>midi://digitakt/live
+      <article class="trick"><h3>4 · Render real events</h3><p>The internal event bus records passes, queues, saves, and stops. Each pass carries its patterns and start time, so a client can draw the playhead by polling without touching playback.</p><pre>midi://digitakt/live
 
-status       playing
+status       'verse+bass' looping (pass 3)
 current_pass verse+bass · pass 3
-recent       note_on · note_off · queued</pre></article>
+recent       pass · queued · song_saved</pre></article>
     </div>
   </section>
 

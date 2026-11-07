@@ -16,8 +16,8 @@ Two servers ship today, and **you install and run them independently**:
 
 | Server | Device | Tools | ~Token cost |
 |--------|--------|-------|-------------|
-| `digitakt-mcp` | Elektron Digitakt (original) | 57 | ~7.5k |
-| `digitone-mcp` | Elektron Digitone (original) | 50 | ~6.8k |
+| `digitakt-mcp` | Elektron Digitakt (original) | 57 | ~7.3k |
+| `digitone-mcp` | Elektron Digitone (original) | 50 | ~6.6k |
 
 They share one implementation internally — a device is a `DeviceSpec` (port name, track
 count, parameter table) over a common core — but each is its own MCP server with its own
@@ -234,7 +234,8 @@ Digitone adds `play_chord`, `set_algorithm`, `set_ratios`, `set_operator_levels`
 
 Each server also exposes four resources: `midi://ports`, `midi://<device>/status`,
 `midi://<device>/parameters`, and `midi://<device>/live`. The live resource reports the
-current pass plus recent note, loop, queue, save, and stop events for visualizers.
+current pass, with its patterns and start time, plus recent pass, queue, save, and stop
+events for visualizers.
 
 Every tool carries MCP annotations, so clients can tell a note from a change that
 overwrites a sound. Playback tools report progress once per bar, and cancelling one sends
