@@ -79,15 +79,29 @@ class TestTransport:
         assert (message.type, message.pos) == ("songpos", 64)
 
 
+def _clocks_before_each_note(port: RecordingPort) -> list[int]:
+    """How many clock pulses went out before each note-on, i.e. where each note landed."""
+    return [port.types[:index].count("clock") for index, kind in enumerate(port.types) if kind == "note_on"]
+
+
 class TestClock:
-    async def test_one_bar_is_start_96_clocks_stop(self, any_device):
+    """Playback tests run on looptime's virtual event-loop clock, so whole bars take no real time.
+
+    The real-time tests at the end cover cancellation and tick timing.
+    """
+
+    @pytest.mark.looptime
+    async def test_one_bar_is_start_96_clocks_stop(self, any_device, looptime):
         await any_device.call("play_with_clock", bars=1, bpm=240, send_start=True, send_stop=True)
 
         types = any_device.port.types
         assert types[0] == "start"
         assert types[-1] == "stop"
         assert types.count("clock") == 96
+        # One bar at 240 BPM is one second.
+        assert looptime == pytest.approx(1.0, abs=0.01)
 
+    @pytest.mark.looptime
     async def test_melody_notes_land_inside_the_clock_stream(self, any_device):
         await any_device.call(
             "play_pattern_with_melody",
@@ -98,7 +112,9 @@ class TestClock:
         )
 
         assert [m.note for m in any_device.port.of_type("note_on")] == [60, 64]
+        assert _clocks_before_each_note(any_device.port) == [1, 25]
 
+    @pytest.mark.looptime
     async def test_loop_repeats_its_notes_each_bar(self, any_device):
         await any_device.call(
             "play_pattern_with_loop",
@@ -109,9 +125,10 @@ class TestClock:
             channel=1,
         )
 
-        # One note per bar of loop, for four bars.
-        assert len(any_device.port.of_type("note_on")) == 4
+        # One note at the top of each bar, for four bars.
+        assert _clocks_before_each_note(any_device.port) == [1, 97, 193, 289]
 
+    @pytest.mark.looptime
     async def test_long_patterns_report_progress_each_bar(self, any_device):
         updates: list[tuple[float, float | None]] = []
 
@@ -166,6 +183,7 @@ class TestClock:
         assert port.types[0] == "start"
         assert port.types[-1] == "stop"
 
+    @pytest.mark.looptime
     async def test_a_failure_mid_pattern_still_stops_the_sequencer(self):
         """A progress notification can fail if the client goes away mid-pattern."""
         port = RecordingPort()

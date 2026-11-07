@@ -54,11 +54,13 @@ class TestDigitakt:
 
         assert len(digitakt.port.controls()) == 4 * 4
 
+    @pytest.mark.looptime
     async def test_track_pattern_fires_each_trigger(self, digitakt):
         await digitakt.call("play_pattern_with_tracks", triggers=[[0, 1, 100], [1, 2, 90]], bars=1, bpm=240)
 
         assert [m.note for m in digitakt.port.of_type("note_on")] == [0, 1]
 
+    @pytest.mark.looptime
     async def test_save_last_pattern_writes_simultaneous_hits(self, digitakt):
         await digitakt.call("play_pattern_with_tracks", triggers=[[0, 1, 100], [0, 6, 90]], bars=1, bpm=300)
 
@@ -87,6 +89,7 @@ class TestDigitone:
         assert digitone.port.controls() == [(Syn1CC.ALGORITHM, 0)]
         assert ALGORITHM_DESCRIPTIONS[1] in result
 
+    @pytest.mark.looptime
     @pytest.mark.parametrize(
         ("tool", "arguments"),
         [
