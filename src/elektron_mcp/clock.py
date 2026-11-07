@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
-import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -29,7 +28,7 @@ PULSES_PER_BAR = PULSES_PER_BEAT * 4
 EventKind = Literal["note", "cc"]
 
 Progress = Callable[[int, int], Awaitable[None]]
-"""Called as `progress(bars_done, total_bars)` after each bar."""
+"""Called as `progress(bars_done, total_bars)` after each bar, from a task separate from the clock."""
 
 
 def pulses(beat: float) -> int:
@@ -124,8 +123,11 @@ async def play(
 ) -> None:
     """Run the clock for `bars` bars, firing `events` at their scheduled pulses.
 
-    Timing is anchored to an absolute start time rather than accumulated sleeps,
-    so pulses don't drift over a long pattern.
+    Timing is anchored to an absolute start on the event loop's clock rather than
+    accumulated sleeps, so pulses don't drift over a long pattern.
+
+    Progress goes out from a separate task. The clock loop only records the latest
+    finished bar, so a slow client never delays a tick; stale bars are skipped.
     """
     connection.require_output()
 
@@ -139,7 +141,23 @@ async def play(
 
     started = False
     event_index = 0
-    began_at = time.monotonic()
+    loop = asyncio.get_running_loop()
+    began_at = loop.time()
+
+    finished_bar = 0
+    bar_finished = asyncio.Event()
+    clock_done = False
+
+    async def report_progress(report: Progress) -> None:
+        reported = 0
+        while not (clock_done and reported == finished_bar):
+            await bar_finished.wait()
+            bar_finished.clear()
+            if finished_bar > reported:
+                reported = finished_bar
+                await report(reported, total_bars)
+
+    reporter = asyncio.create_task(report_progress(progress)) if progress is not None else None
 
     try:
         for pulse_index in range(total_pulses):
@@ -167,14 +185,19 @@ async def play(
                     _fire(connection, event)
 
             deadline = began_at + (pulse_index + 1) * interval
-            remaining = deadline - time.monotonic()
+            remaining = deadline - loop.time()
             if remaining > 0:
                 await asyncio.sleep(remaining)
 
-            if progress is not None and ((pulse_index + 1) % PULSES_PER_BAR == 0 or pulse_index + 1 == total_pulses):
-                # Timing is anchored to began_at, so a slow notification doesn't push later pulses back.
-                await progress(math.ceil((pulse_index + 1) / PULSES_PER_BAR), total_bars)
+            if reporter is not None and ((pulse_index + 1) % PULSES_PER_BAR == 0 or pulse_index + 1 == total_pulses):
+                if reporter.done():
+                    # Surface a failed notification (e.g. the client went away) instead of playing on.
+                    reporter.result()
+                finished_bar = math.ceil((pulse_index + 1) / PULSES_PER_BAR)
+                bar_finished.set()
     except BaseException:
+        if reporter is not None:
+            reporter.cancel()
         # Cancelled by the client, or a send failed. Without a Stop the device sits
         # mid-pattern waiting for clock that will never come.
         if started and connection.output_port is not None:
@@ -187,6 +210,12 @@ async def play(
     if send_stop and started:
         connection.send(mido.Message("stop"))
         connection.log_transport("STOP")
+
+    if reporter is not None:
+        # The clock is finished, so waiting for the last bar's notification costs no timing.
+        clock_done = True
+        bar_finished.set()
+        await reporter
 
 
 # asyncio only holds weak references to tasks, so a note-off scheduled and then

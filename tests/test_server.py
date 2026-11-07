@@ -1,6 +1,7 @@
 """Tests for the shared server core, run against every device."""
 
 import asyncio
+import itertools
 import json
 import logging
 import time
@@ -122,6 +123,34 @@ class TestClock:
 
         assert updates == [(1, 2), (2, 2)]
 
+    async def test_a_slow_progress_client_never_delays_a_clock_tick(self):
+        """Progress used to be awaited inside the clock loop, so a slow client stalled the beat."""
+
+        class TimedPort(RecordingPort):
+            def __init__(self) -> None:
+                super().__init__()
+                self.sent_at: list[float] = []
+
+            def send(self, message: mido.Message) -> None:
+                super().send(message)
+                self.sent_at.append(time.perf_counter())
+
+        port = TimedPort()
+        connection = MidiConnection(port_name="x", display_name="x", logger=logging.getLogger("test"))
+        connection.output_port = port
+        reported: list[int] = []
+
+        async def slow_progress(bar, total):
+            await asyncio.sleep(0.3)
+            reported.append(bar)
+
+        await clock.play(connection, [], bars=2, bpm=600, progress=slow_progress)
+
+        ticks = [at for message, at in zip(port.messages, port.sent_at, strict=True) if message.type == "clock"]
+        assert len(ticks) == 192
+        assert max(b - a for a, b in itertools.pairwise(ticks)) < clock.clock_interval(600) + 0.05
+        assert reported[-1] == 2
+
     async def test_cancelling_playback_stops_the_sequencer(self):
         """Otherwise the device sits mid-pattern waiting for clock that never comes."""
         port = RecordingPort()
@@ -147,10 +176,12 @@ class TestClock:
             raise RuntimeError("client went away")
 
         with pytest.raises(RuntimeError):
-            await clock.play(connection, [], bars=2, bpm=300, progress=broken_progress)
+            await clock.play(connection, [], bars=4, bpm=300, progress=broken_progress)
 
         assert port.types[0] == "start"
         assert port.types[-1] == "stop"
+        # The failure surfaces at the next bar instead of playing out all four.
+        assert port.types.count("clock") == 2 * 96
 
     async def test_out_of_range_notes_are_rejected_before_start(self, any_device):
         """mido used to raise mid-pattern, after Start, leaving the device running with no Stop."""
