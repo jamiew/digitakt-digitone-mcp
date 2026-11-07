@@ -140,6 +140,19 @@ class TestClock:
 
         assert updates == [(1, 2), (2, 2)]
 
+    @pytest.mark.looptime
+    async def test_automation_repeats_every_loop(self, any_device):
+        await any_device.call(
+            "play_pattern_with_parameter_automation",
+            triggers=[[0, 1, 100]],
+            parameter_automation={"filter_cutoff": [[0, 20], [2, 80]]},
+            automation_loop_bars=1,
+            bars=4,
+            bpm=240,
+        )
+
+        assert [value for _, value in any_device.port.controls()] == [20, 80] * 4
+
     async def test_a_slow_progress_client_never_delays_a_clock_tick(self):
         """Progress used to be awaited inside the clock loop, so a slow client stalled the beat."""
 

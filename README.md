@@ -305,7 +305,7 @@ Everything else that changed:
 | MCP API | low-level `mcp.server.Server` | `MCPServer` (mcp 2.x): resources, tool annotations, progress |
 | Install | `requirements.txt` | `uv` + hatchling, console scripts, wheel |
 | Python | 3.10+ | 3.11–3.14, `py.typed`, checked with `ty` |
-| Tests | hardware scripts only | 144 tests with no hardware, plus a live LLM harness |
+| Tests | hardware scripts only | 151 tests with no hardware, plus a live LLM harness |
 | CI | — | GitHub Actions: format, lint, types, tests, build |
 | License | none | MIT |
 
@@ -317,12 +317,14 @@ they've since been corrected for the mk1.
 
 ## Testing it
 
-Go from cheapest to most real. Each step needs a bit more than the one before.
+Go from cheapest to most real. Each step needs a bit more than the one before. The
+harness steps need their extra dependencies first: `uv sync --group harness`.
 
 | Step | Command | Needs |
 |---|---|---|
 | Unit tests | `uv run pytest` | nothing |
 | Poke single tools | `uv run python -m harness digitakt call trigger_track track=1` | the device on USB, or `--dry-run` |
+| Hardware smoke checklist | `uv run python -m harness digitakt smoke` | the Digitakt on USB, or `--dry-run` |
 | Scenario suite, no hardware | `uv run python -m harness digitone --dry-run test` | an API key |
 | Scenario suite on the device | `uv run python -m harness digitakt test` | key + device |
 | Free-form chat | `uv run python -m harness digitakt` | key + device |
@@ -332,7 +334,8 @@ Go from cheapest to most real. Each step needs a bit more than the one before.
 
 `harness/` drives either server with a real model, so you can check the MCP surface
 without opening Claude or ChatGPT. It starts the server from `.mcp.json`, the same way
-Claude Code does. Run it from the repo root.
+Claude Code does. Run it from the repo root, after `uv sync --group harness`. The servers
+and the unit tests don't need that group.
 
 Put one of these in your environment or in a `.env` file at the repo root (it's
 gitignored): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`. The harness
@@ -347,7 +350,13 @@ uv run python -m harness digitone --dry-run        # chat with no hardware; MIDI
 uv run python -m harness digitakt call             # list tools and resources, no key needed
 uv run python -m harness digitakt call play_pattern_with_tracks \
     triggers='[[0,1,110],[1,2,100],[2,1,110],[3,2,100]]' bars=2 bpm=90
+uv run python -m harness digitakt smoke            # fixed checklist to listen to, no key needed
 ```
+
+`smoke` plays a fixed Digitakt checklist through the tools: single notes, tracks 1-8,
+transport and song position, clocked patterns, and a count-in with a delayed MIDI Start.
+It prints what to listen for before each step. It needs samples on tracks 1-8, a melodic
+sound on the active track, and transport and clock receive turned on.
 
 Every tool call prints as it happens (`→ set_parameter(name="filter_cutoff", ...)`),
 followed by its result, with progress per bar for playback. The server's own log shows
@@ -421,8 +430,8 @@ commands, and Claude Code picks it up automatically.
 ## Development
 
 ```bash
-uv sync
-uv run pytest              # 144 tests, no hardware needed
+uv sync --group harness    # ty also checks harness/, so it needs these imports
+uv run pytest              # 151 tests, no hardware needed
 uv run ruff check .
 uv run ruff format .
 uv run ty check
@@ -430,13 +439,14 @@ uv run ty check
 
 Tests drive the real MCP surface (an in-process `mcp.client.Client`) against a recording
 MIDI port, so tool registration, schema validation and error text are covered along with
-the emitted bytes. A test also keeps each server's tool schemas under 7.5k tokens. The
-module layout is in [PLAN.md](PLAN.md#architecture).
+the emitted bytes. Playback tests run on [looptime](https://github.com/nolar/looptime)'s
+virtual event-loop clock, so bars take no real time; a few real-time tests cover
+cancellation and tick timing. A test also keeps each server's tool schemas under 7.5k
+tokens. The module layout is in [PLAN.md](PLAN.md#architecture).
 `.mcp.json` is the headless dev entry (works from any cwd, no device needed);
 `tests/test_mcp_json.py` launches each server from it over stdio in both protocol eras.
 
-`scripts/hardware/` holds manual scripts that need a real device attached; they are not
-part of the test suite.
+To check by ear on a real Digitakt, run `uv run python -m harness digitakt smoke`.
 
 ---
 
