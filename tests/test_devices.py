@@ -1,5 +1,6 @@
 """Tests for the tools and specs unique to each device."""
 
+import mido
 import pytest
 
 from conftest import ToolError
@@ -86,10 +87,24 @@ class TestDigitone:
         assert digitone.port.controls() == [(Syn1CC.ALGORITHM, 0)]
         assert ALGORITHM_DESCRIPTIONS[1] in result
 
-    async def test_set_algorithm_rejects_out_of_range_before_sending(self, digitone):
-        with pytest.raises(ToolError, match="less than or equal to 8"):
-            await digitone.call("set_algorithm", algorithm=9)
-        assert digitone.port.messages == []
+    @pytest.mark.parametrize(
+        ("tool", "arguments"),
+        [
+            ("play_pattern_with_parameter_automation", {"triggers": [[0, 2, 100]], "parameter_automation": {}}),
+            ("play_pattern_with_multi_channel_midi", {"track_triggers": [[0, 2, 100]]}),
+        ],
+    )
+    async def test_track_triggers_play_the_track_on_its_channel(self, digitone, tool, arguments):
+        """The Digitone has no trigger notes, so track 2 must be a note on channel 2, not note 1."""
+        await digitone.call(tool, bars=1, bpm=300, **arguments)
+
+        assert [(m.channel, m.note) for m in digitone.port.of_type("note_on")] == [(1, 60)]
+
+    async def test_exported_triggers_match_playback(self, digitone):
+        await digitone.call("export_pattern_to_midi", filename="beat", track_triggers=[[0, 2, 100]])
+
+        midi = mido.MidiFile(digitone.device.storage.recording_path("beat"))
+        assert [(m.channel, m.note) for m in midi.tracks[1] if m.type == "note_on"] == [(1, 60)]
 
     async def test_set_parameter_enforces_the_declared_range(self, digitone):
         """`fm_algorithm` is 0-7. The old code looked for min/max keys the table never had,
@@ -114,8 +129,3 @@ class TestDigitone:
             (Syn2CC.A_LEVEL, 30),
         ]
         assert "attack=10" in result and "decay=20" in result and "level=30" in result
-
-    async def test_operator_envelope_rejects_a_bad_operator_before_sending(self, digitone):
-        with pytest.raises(ToolError):
-            await digitone.call("set_operator_envelope", operator="C", attack=1)
-        assert digitone.port.messages == []

@@ -190,10 +190,11 @@ def register_sample_tools(device: DeviceServer) -> None:
 
         Prefers slots no pattern uses yet. Only switches slots, so nothing is uploaded.
         """
-        wanted = {int(t): r for t, r in roles.items()} if roles else dict(DEFAULT_KIT)
-        bad = {t: r for t, r in wanted.items() if r not in ROLES or not 1 <= t <= 8}
+        roles = roles or {str(t): r for t, r in DEFAULT_KIT.items()}
+        bad = {t: r for t, r in roles.items() if r not in ROLES or not (t.isdigit() and 1 <= int(t) <= 8)}
         if bad:
             raise ToolError(f"Unknown tracks or roles: {bad}. Tracks are 1-8; roles are {', '.join(ROLES)}.")
+        wanted = {int(t): r for t, r in roles.items()}
 
         before = {t.track: t.slot for t in await device.elektroid.tracks()}
         picks = pick_kit(await device.elektroid.slots(), wanted, random.Random(seed))

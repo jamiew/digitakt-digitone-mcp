@@ -130,9 +130,10 @@ class TestBootstrapKit:
         assert "nothing in the slots looks like a cowbell" in result
         assert slot_changes(digitakt) == []
 
-    async def test_rejects_unknown_roles(self, digitakt, cli):
+    @pytest.mark.parametrize("roles", [{"1": "theremin"}, {"9": "kick"}, {"one": "kick"}])
+    async def test_rejects_unknown_tracks_and_roles(self, digitakt, cli, roles):
         with pytest.raises(ToolError, match="Unknown tracks or roles"):
-            await digitakt.call("bootstrap_kit", roles={"1": "theremin"})
+            await digitakt.call("bootstrap_kit", roles=roles)
 
 
 class TestLoadSample:

@@ -154,6 +154,12 @@ class DeviceServer:
             raise ToolError(f"Unknown parameter {name!r}. Use list_parameters to see what's available.")
         return parameter
 
+    def track_hit(self, track: int) -> tuple[int, int]:
+        """Zero-based channel and note that fire a track, as trigger_track and text patterns do."""
+        if self.spec.trigger_notes:
+            return 0, track - 1
+        return track - 1, 60
+
     def apply(self, parameter: Parameter, value: int, channel: int) -> str:
         """Send a parameter by whichever transport it uses. Returns a description."""
         if not parameter.in_range(value):
@@ -564,7 +570,7 @@ def _register_playback(device: DeviceServer) -> None:
             events.append(
                 note_event(
                     beat=row[0],
-                    note=int(row[3]) if len(row) > 3 else track - 1,
+                    note=int(row[3]) if len(row) > 3 else device.track_hit(track)[1],
                     velocity=int(row[2]) if len(row) > 2 else 100,
                     channel=track - 1,
                 )
@@ -614,15 +620,11 @@ def _register_playback(device: DeviceServer) -> None:
         send_stop: SendStop = True,
     ) -> str:
         """Play triggers with parameter automation running alongside."""
-        events: list[Event] = [
-            note_event(
-                beat=row[0],
-                note=int(row[1]) - 1,
-                velocity=int(row[2]) if len(row) > 2 else 100,
-                channel=0,
-            )
-            for row in triggers
-        ]
+        events: list[Event] = []
+        for row in triggers:
+            channel, note = device.track_hit(int(row[1]))
+            velocity = int(row[2]) if len(row) > 2 else 100
+            events.append(note_event(beat=row[0], note=note, velocity=velocity, channel=channel))
         events += _automation_events(device, parameter_automation, automation_loop_bars)
 
         device.logger.info(f"▶️  PLAY WITH AUTOMATION: {bars} bars @ {bpm} BPM")
@@ -1194,14 +1196,18 @@ def _register_export(device: DeviceServer) -> None:
         melody_notes = melody_notes or []
         path = storage.recording_path(filename)
 
-        midifile.write_pattern(
-            path,
-            bpm=bpm,
-            track_triggers=track_triggers,
-            melody_notes=melody_notes,
-            melody_channel=melody_channel,
-            drum_track_name=f"{device.spec.display_name} Drums",
-        )
+        try:
+            midifile.write_pattern(
+                path,
+                bpm=bpm,
+                track_triggers=track_triggers,
+                trigger_hit=device.track_hit,
+                melody_notes=melody_notes,
+                melody_channel=melody_channel,
+                drum_track_name=f"{device.spec.display_name} Drums",
+            )
+        except ValueError as exc:
+            raise ToolError(f"Can't export {path.name}: {exc}") from None
         return (
             f"Exported pattern to {path}: {bars} bars, {len(track_triggers)} triggers, {len(melody_notes)} melody notes"
         )
@@ -1214,16 +1220,16 @@ def _register_export(device: DeviceServer) -> None:
     ) -> str:
         """Export parameter automation as CC events in a MIDI file."""
         path = storage.recording_path(filename)
-        bpm = automation.get("bpm", 120)
-
-        events: list[tuple[float, int, int]] = []
-        for name, rows in automation.get("parameter_automation", {}).items():
-            parameter = device.spec.parameter(name)
-            if parameter is None or parameter.cc is None:
-                continue
-            events += [(beat, parameter.cc, parameter.clamp(int(value))) for beat, value in rows]
-
-        count = midifile.write_automation(path, bpm=bpm, events=events, channel=channel - 1)
+        try:
+            events: list[tuple[float, int, int]] = []
+            for name, rows in automation.get("parameter_automation", {}).items():
+                parameter = device.spec.parameter(name)
+                if parameter is None or parameter.cc is None:
+                    continue
+                events += [(beat, parameter.cc, parameter.clamp(int(value))) for beat, value in rows]
+            count = midifile.write_automation(path, bpm=automation.get("bpm", 120), events=events, channel=channel - 1)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ToolError(f"Can't export {path.name}: {exc}") from None
         return f"Exported automation to {path}: {count} CC events"
 
     @device.tool(WRITES)

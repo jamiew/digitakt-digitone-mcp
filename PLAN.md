@@ -7,7 +7,7 @@ FastMCP server from a `DeviceSpec`; each device ships its own console script so 
 cost stays per-device. Digitakt and Digitone are supported; both are on the original
 hardware, not the mk2 machines.
 
-Green: `ruff check`, `ruff format --check`, `ty check`, 133 tests, wheel builds and
+Green: `ruff check`, `ruff format --check`, `ty check`, 142 tests, wheel builds and
 imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-07-28.
 
 | | |
@@ -15,7 +15,7 @@ imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-0
 | Devices | Digitakt (57 tools, ~7.3k tokens), Digitone (50 tools, ~6.6k tokens) |
 | Entry points | `digitakt-mcp`, `digitone-mcp`, both in `.mcp.json` |
 | Python | 3.11–3.14 |
-| Tests | 133, no hardware required; plus `harness/` for live LLM runs |
+| Tests | 142, no hardware required; plus `harness/` for live LLM runs |
 
 ## Architecture
 
@@ -28,6 +28,9 @@ src/elektron_mcp/
   pattern_language.py  strict text patterns and compact song arrangements
   live.py        event bus and seamless loop-boundary switching
   midifile.py    .mid writing
+  elektroid.py   elektroid-cli wrapper and output parsers
+  drive.py       +Drive, sample slot and sound tools
+  kit.py         drum-role guessing from sample names
   server.py      build_server(spec) + shared MCP tools
   devices/
     digitakt.py         SPEC + 8 device tools
@@ -66,6 +69,7 @@ new parameter map.
       single tool calls. `--dry-run` captures MIDI in-process for no-hardware runs.
 - [x] KO-II-style text patterns and compact songs, with exact parser errors, end-of-loop
       switching, and a live event resource for visualizers
+- [x] Token budget test: `TestSchema` keeps each server's tool schemas under ~7.5k tokens
 
 ### MCP protocol audit (Oct 2026)
 
@@ -103,6 +107,17 @@ every later event in `clock.play`.
 - **`mcp` was unpinned across a major version.** The lockfile held 1.26.0 so local dev was
   fine, but a fresh install resolved 2.0.0, where `mcp.server.fastmcp` no longer exists —
   every entry point would have failed on a clean machine.
+
+### Fixed in the post-upgrade audit (Nov 2026)
+
+- **Digitone track triggers sent note N-1.** `play_pattern_with_parameter_automation`,
+  `play_pattern_with_multi_channel_midi` and `export_pattern_to_midi` assumed the Digitakt's
+  trigger notes. On the Digitone a track trigger is now note 60 on the track's channel, as
+  in text patterns.
+- **Export errors were hidden.** An out-of-range note or a malformed automation row raised
+  `ValueError`, which reached the model as "Error executing tool". They are `ToolError`s now.
+- **`new_sounds` built texture on track 1**, while the text-pattern aliases put `keys` on
+  track 1 and `texture` on track 4. The prompt now follows the aliases.
 
 ### Inherited Digitakt II code, removed
 
@@ -172,7 +187,6 @@ a Digitakt II spec ever lands, where its expectations become correct).
       tokens per server.
 - [ ] **Connection resilience.** Reconnect when the device is power-cycled instead of
       failing until restart.
-- [ ] **Token budget test** — assert the tool schema stays under ~7.5k tokens per server.
 
 ### Low / future
 
@@ -194,7 +208,7 @@ a Digitakt II spec ever lands, where its expectations become correct).
 - [ ] **Run `python -m harness digitone test` on a Digitone.** The Digitone scenarios have
       only run in `--dry-run`.
 - [ ] **Publish to PyPI** so it's `uvx digitakt-mcp` with no clone.
-- [ ] Kit / sound-lock parameters, sample slot selection.
+- [ ] Kit / sound-lock parameters.
 
 ## Notes on the ecosystem
 

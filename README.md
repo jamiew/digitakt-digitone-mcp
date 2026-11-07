@@ -48,7 +48,7 @@ to be running.
 
 Working inside this repo? Claude Code reads the checked-in `.mcp.json` and offers both
 servers when you open it. Turn off the one you aren't using in `/mcp`; each costs about
-6-7k tokens of tool schema.
+7k tokens of tool schema.
 
 ---
 
@@ -216,10 +216,11 @@ hat: x.x. x.x. x.x. x.x.
 ```
 
 `x`, `X`, `o`, and `1`–`9` are hits; `.` rests; `-` holds the previous hit. Digitakt
-names such as `kick`, `snare`, and `hat` map to tracks. Digitone names such as `bass` and
-`lead` map to synth tracks and can add `bass notes: C2 G1+D2`. Songs stay readable:
-`intro x2, verse+bass x4, outro`. Starting another pattern while one loops queues it for
-the next loop boundary instead of cutting the current pass short.
+names such as `kick`, `snare`, and `hat` map to tracks. Digitone names `keys`, `bass`,
+`lead`, and `texture` play tracks 1–4 chromatically, so each needs a notes line such as
+`bass notes: C2 G1+D2`. Songs stay readable: `intro x2, verse+bass x4, outro`. Starting
+another pattern while one loops queues it for the next loop boundary instead of cutting
+the current pass short.
 
 `monitor_midi_input` summarizes MIDI Clock and Active Sensing instead of flooding the
 result, while retaining notes, CC, program changes, and other useful events.
@@ -304,7 +305,7 @@ Everything else that changed:
 | MCP API | low-level `mcp.server.Server` | `MCPServer` (mcp 2.x): resources, tool annotations, progress |
 | Install | `requirements.txt` | `uv` + hatchling, console scripts, wheel |
 | Python | 3.10+ | 3.11–3.14, `py.typed`, checked with `ty` |
-| Tests | hardware scripts only | 114 tests with no hardware, plus a live LLM harness |
+| Tests | hardware scripts only | 142 tests with no hardware, plus a live LLM harness |
 | CI | — | GitHub Actions: format, lint, types, tests, build |
 | License | none | MIT |
 
@@ -395,7 +396,7 @@ works.
 | `list_sounds` | A sound bank's names (both devices) |
 
 There are also prompts: `new_kit` and `load_cipher_pack` on the Digitakt, and
-`new_sounds` (texture, keys, bass, lead) on the Digitone. A `midi://digitakt/kit` resource
+`new_sounds` (keys, bass, lead, texture) on the Digitone. A `midi://digitakt/kit` resource
 returns the tracks and slots as JSON.
 
 Things to know:
@@ -421,7 +422,7 @@ commands, and Claude Code picks it up automatically.
 
 ```bash
 uv sync
-uv run pytest              # 114 tests, no hardware needed
+uv run pytest              # 142 tests, no hardware needed
 uv run ruff check .
 uv run ruff format .
 uv run ty check
@@ -429,21 +430,8 @@ uv run ty check
 
 Tests drive the real MCP surface (an in-process `mcp.client.Client`) against a recording
 MIDI port, so tool registration, schema validation and error text are covered along with
-the emitted bytes.
-
-```
-src/elektron_mcp/
-  device.py      DeviceSpec + typed Parameter table
-  midi.py        connection, message sending, logging
-  clock.py       the one clock loop every playback tool shares
-  storage.py     patterns / songs / presets / recordings on disk
-  midifile.py    .mid writing
-  server.py      build_server(spec) -> a full MCPServer
-  devices/
-    digitakt.py  spec + trigger/trig tools
-    digitone.py  spec + FM tools
-harness/         live LLM harness: providers, scenarios, CLI
-```
+the emitted bytes. A test also keeps each server's tool schemas under 7.5k tokens. The
+module layout is in [PLAN.md](PLAN.md#architecture).
 
 `scripts/hardware/` holds manual scripts that need a real device attached; they are not
 part of the test suite.
