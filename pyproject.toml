@@ -1,6 +1,6 @@
 [project]
 name = "digitakt-digitone-mcp"
-version = "0.5.1"
+version = "0.5.2"
 description = "MCP servers for controlling Elektron Digitakt and Digitone over MIDI"
 readme = "README.md"
 license = "MIT"
