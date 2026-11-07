@@ -108,6 +108,8 @@ class DeviceSpec:
 
     Drives note logging and the presence of the track-trigger tools.
     """
+    pattern_aliases: dict[str, str] = field(default_factory=dict)
+    """Friendly pattern-language names mapped to tN fixed triggers or chN pitched tracks."""
 
     # Parameters
     parameters: dict[str, Parameter] = field(default_factory=dict)

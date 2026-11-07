@@ -267,6 +267,74 @@ class TestPatterns:
         assert not list(storage_root.rglob("*.json"))
 
 
+def _track_hit(device, track: int) -> tuple[int, int]:
+    """(zero-based channel, note) a text-pattern tN hit sends."""
+    return (0, track - 1) if device.spec.trigger_notes else (track - 1, 60)
+
+
+class TestPatternLanguage:
+    async def test_text_pattern_and_song_round_trip(self, any_device):
+        first = "@bpm 300\n@grid 1/32\nt1: x"
+        second = "@bpm 300\n@grid 1/32\nt2: x"
+
+        checked = await any_device.call("check_pattern", text=first)
+        assert "1 steps of 1/32" in checked
+        await any_device.call("save_pattern_text", pattern_name="intro", text=first)
+        await any_device.call("save_pattern_text", pattern_name="verse", text=second)
+        saved = await any_device.call(
+            "save_song",
+            song_name="track",
+            arrangement="intro x2, verse",
+        )
+
+        assert "3 passes" in saved
+        assert "intro x2, verse" in await any_device.call("list_songs")
+        assert "Text:" in await any_device.call("list_patterns")
+        assert first in await any_device.call("load_pattern", pattern_name="intro")
+
+        await any_device.call("play_pattern_text", what="track")
+        await asyncio.sleep(0.15)
+
+        notes = any_device.port.of_type("note_on")
+        assert [(message.channel, message.note) for message in notes] == [
+            _track_hit(any_device.device, 1),
+            _track_hit(any_device.device, 1),
+            _track_hit(any_device.device, 2),
+        ]
+
+    async def test_loop_switches_at_boundary_and_publishes_live_state(self, any_device):
+        current = "@bpm 300\n@grid 1/32\nt1: x..."
+        next_pattern = "@bpm 300\n@grid 1/32\nt2: x..."
+        await any_device.call("save_pattern_text", pattern_name="current", text=current)
+        await any_device.call("save_pattern_text", pattern_name="next", text=next_pattern)
+
+        assert "on loop" in await any_device.call("play_pattern_text", what="current", loop=True)
+        await asyncio.sleep(0.02)
+        queued = await any_device.call("play_pattern_text", what="next", loop=True)
+        live = json.loads(await any_device.read(f"midi://{any_device.device.spec.slug}/live"))
+
+        assert queued.startswith("Queued")
+        assert live["current_pass"]["label"] == "current"
+        assert any(event["type"] == "queued" and event["label"] == "next" for event in live["recent"])
+
+        await asyncio.sleep(0.15)
+        sent = [(message.channel, message.note) for message in any_device.port.of_type("note_on")]
+        assert _track_hit(any_device.device, 2) in sent
+        assert await any_device.call("stop_pattern_playback") == "Stopped pattern playback"
+        stopped = json.loads(await any_device.read(f"midi://{any_device.device.spec.slug}/live"))
+        assert stopped["current_pass"] is None
+
+    async def test_text_pattern_errors_keep_line_and_column(self, any_device):
+        with pytest.raises(ToolError, match=r"line 1, col 5.*hold"):
+            await any_device.call("check_pattern", text="t1: -..q")
+
+    async def test_structured_edit_tools_refuse_text_patterns(self, any_device):
+        await any_device.call("save_pattern_text", pattern_name="text", text="t1: x...")
+
+        with pytest.raises(ToolError, match="uses text notation"):
+            await any_device.call("update_pattern", pattern_name="text", bpm=140)
+
+
 class TestExport:
     async def test_export_pattern_writes_a_midi_file(self, any_device):
         await any_device.call(

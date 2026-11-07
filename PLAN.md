@@ -7,15 +7,15 @@ FastMCP server from a `DeviceSpec`; each device ships its own console script so 
 cost stays per-device. Digitakt and Digitone are supported; both are on the original
 hardware, not the mk2 machines.
 
-Green: `ruff check`, `ruff format --check`, `ty check`, 114 tests, wheel builds and
+Green: `ruff check`, `ruff format --check`, `ty check`, 133 tests, wheel builds and
 imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-07-28.
 
 | | |
 |---|---|
-| Devices | Digitakt (50 tools, ~6.9k tokens), Digitone (43 tools, ~6.2k tokens) |
+| Devices | Digitakt (57 tools, ~7.3k tokens), Digitone (50 tools, ~6.6k tokens) |
 | Entry points | `digitakt-mcp`, `digitone-mcp`, both in `.mcp.json` |
 | Python | 3.11–3.14 |
-| Tests | 114, no hardware required; plus `harness/` for live LLM runs |
+| Tests | 133, no hardware required; plus `harness/` for live LLM runs |
 
 ## Architecture
 
@@ -24,9 +24,11 @@ src/elektron_mcp/
   device.py      DeviceSpec, Parameter, parse_parameters
   midi.py        MidiConnection — ports, sending, logging
   clock.py       Event + play(); the single clock loop
-  storage.py     ~/.mcp-config/<slug>/{patterns,presets,recordings}
+  storage.py     ~/.mcp-config/<slug>/{patterns,songs,presets,recordings}
+  pattern_language.py  strict text patterns and compact song arrangements
+  live.py        event bus and seamless loop-boundary switching
   midifile.py    .mid writing
-  server.py      build_server(spec) + all 36 shared tools
+  server.py      build_server(spec) + shared MCP tools
   devices/
     digitakt.py         SPEC + 8 device tools
     digitone.py         SPEC + 6 FM tools
@@ -62,6 +64,8 @@ new parameter map.
 - [x] `.mcp.json` for Claude Code, and a live harness (`python -m harness`) that drives
       either server with Anthropic, OpenAI or OpenRouter, as chat, a scenario suite, or
       single tool calls. `--dry-run` captures MIDI in-process for no-hardware runs.
+- [x] KO-II-style text patterns and compact songs, with exact parser errors, end-of-loop
+      switching, and a live event resource for visualizers
 
 ### MCP protocol audit (Oct 2026)
 
@@ -75,7 +79,7 @@ new parameter map.
 | Server identity | Name only | `title`, `version`, and `instructions` (channels, beats, where parameters live) |
 | Progress | None | Clock-driven tools report each bar |
 | Cancellation | Device left mid-pattern | Cancelled playback sends MIDI Stop |
-| Resources | 3, no mime types | Same 3, JSON ones marked `application/json` |
+| Resources | 3 | 4 shared, with a fifth Digitakt kit resource |
 | Prompts, completions, elicitation, sampling, logging | Unused | Still unused. Sampling, roots and logging are deprecated in the 2026-07-28 spec; elicitation could confirm `delete_pattern` but annotations already let clients ask |
 
 Also fixed while migrating: `play_midi_file` used `MidiFile.play()`, which blocks the
@@ -177,10 +181,10 @@ a Digitakt II spec ever lands, where its expectations become correct).
       [`mzero/elk-herd`](https://github.com/mzero/elk-herd) (BSD-2) documents the struct
       layouts per OS version and is the most authoritative public source; its author was
       given Elektron's actual headers. Covers Digitakt and Digitakt II, not Digitone.
-- [ ] **Live arrangement visualizer and control surface.** Merge MIDI transport/events
-      with cached pattern dumps over a local WebSocket. Keep viewing read-only by
-      default, refresh full dumps only at stable boundaries, and label observed, cached,
-      and inferred state separately.
+- [ ] **Hardware-backed arrangement visualizer and control surface.** The pattern player
+      now publishes live events through `midi://<device>/live`; add observed hardware
+      transport plus cached pattern dumps over a local WebSocket. Refresh dumps only at
+      stable boundaries and label observed, cached, and inferred state separately.
 - [ ] **Safe Song Mode read/write.** Song Mode lives inside the proprietary compressed
       project payload rather than the documented per-pattern SysEx. Add it only after
       round-trip fixtures prove row length, repeat, mute, tempo, and stop markers.
