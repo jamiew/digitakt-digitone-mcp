@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Untitled Digitakt song · visualizer</title>
+<style>
+  :root {
+    --paper:#fcfcfe; --paper-2:#f5f6fa; --paper-3:#eceef5;
+    --ink:#16171d; --ink-soft:#545866; --ink-faint:#6e7280;
+    --rule:#d9dce6; --rule-soft:#e8eaf1; --accent:#6a4fd8; --accent-2:#d4559b;
+    --gold:#f2994a; --gold-soft:#ffe1a8; --good:#2da56f;
+    --group:rgba(0,0,0,.03); --group-line:rgba(0,0,0,.08);
+    --control-bg:#fff; --control-hover:#f2f3f6; --control-border:rgba(0,0,0,.14);
+    --control-shadow:0 .5px 1.5px rgba(0,0,0,.12);
+    --font-ui:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    --radius-panel:10px; --radius-control:6px; color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark) {
+    :root {
+      --paper:#1c1d22; --paper-2:#24252c; --paper-3:#2c2e36;
+      --ink:#ececf1; --ink-soft:#b0b3bf; --ink-faint:#8a8e9b;
+      --rule:#3a3d48; --rule-soft:#2e3039; --accent:#a99bff; --accent-2:#f08ab8;
+      --gold:#ffb86b; --gold-soft:#4a3d24; --good:#8fe3a1;
+      --group:rgba(255,255,255,.045); --group-line:rgba(255,255,255,.08);
+      --control-bg:#33353e; --control-hover:#3c3e48; --control-border:rgba(255,255,255,.1);
+      --control-shadow:0 .5px 1.5px rgba(0,0,0,.45);
+    }
+  }
+  * { box-sizing:border-box }
+  html,body { margin:0; min-height:100%; background:var(--paper); color:var(--ink); font:13px/1.35 var(--font-ui); font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased }
+  button,input,select { font:inherit }
+  button { color:inherit }
+  .topbar { position:sticky; top:0; z-index:50; display:grid; grid-template-columns:auto minmax(180px,1fr) auto; align-items:center; gap:14px; min-height:58px; padding:8px 18px; background:color-mix(in srgb,var(--paper) 92%,transparent); border-bottom:1px solid var(--rule); backdrop-filter:blur(16px) saturate(160%) }
+  .brand { display:flex; align-items:center; gap:10px; min-width:0 }
+  .brand-dot { width:10px; height:10px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 15%,transparent) }
+  .brand h1 { margin:0; font-size:15px; line-height:18px; font-weight:650; letter-spacing:-.01em }
+  .brand small { display:block; color:var(--ink-faint); font-size:11px; font-weight:400 }
+  .transport { display:flex; align-items:center; justify-content:center; gap:10px; min-width:0 }
+  .play { width:34px; height:34px; border:0; border-radius:50%; display:grid; place-items:center; background:var(--ink); color:var(--paper); cursor:pointer; box-shadow:var(--control-shadow) }
+  .play:hover { background:var(--accent) }
+  .play svg { width:14px; height:14px; fill:currentColor }
+  .transport-info { min-width:92px }
+  .transport-info strong { display:block; font-size:12px; font-weight:600 }
+  .transport-info span { display:block; font-size:11px; color:var(--ink-faint) }
+  .mini-timeline { position:relative; width:min(38vw,440px); min-width:160px; height:28px; padding:0; overflow:hidden; border:1px solid var(--rule); border-radius:7px; background:var(--paper-2); cursor:pointer }
+  .mini-sections { position:absolute; inset:0; display:flex }
+  .mini-section { height:100%; opacity:.2; border-right:1px solid var(--paper) }
+  .mini-head { position:absolute; top:0; bottom:0; left:0; width:2px; background:var(--accent); pointer-events:none }
+  .controls { display:flex; gap:8px; align-items:center; justify-content:flex-end }
+  .field { display:flex; align-items:center; gap:5px; color:var(--ink-soft); font-size:11px }
+  .field input { width:52px; height:26px; padding:0 5px; color:var(--ink); text-align:right; background:var(--control-bg); border:.5px solid var(--control-border); border-radius:var(--radius-control); box-shadow:var(--control-shadow) }
+  .seg { display:inline-flex; gap:2px; padding:2px; border-radius:7px; background:var(--paper-3) }
+  .seg button { border:0; border-radius:5px; padding:4px 10px; background:none; color:var(--ink); cursor:pointer }
+  .seg svg { display:block; width:10px; height:10px; stroke:currentColor; stroke-width:1.5; fill:none }
+  .seg button[aria-pressed=true] { background:var(--control-bg); color:var(--ink); box-shadow:var(--control-shadow) }
+  .tabs-wrap { position:sticky; top:58px; z-index:40; padding:7px 18px; background:var(--paper); border-bottom:1px solid var(--rule-soft) }
+  .tabs { width:fit-content; max-width:100%; display:flex; gap:2px; padding:2px; overflow:auto; border-radius:7px; background:var(--paper-3) }
+  .tab { border:0; border-radius:5px; padding:5px 13px; background:none; color:var(--ink-soft); cursor:pointer; white-space:nowrap }
+  .tab[aria-selected=true] { background:var(--control-bg); color:var(--ink); box-shadow:var(--control-shadow) }
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:20px; padding:18px 20px 44px }
+  main { min-width:0 }
+  aside { position:sticky; top:112px; align-self:start; max-height:calc(100vh - 126px); overflow:auto }
+  .view[hidden] { display:none }
+  .hero { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin:2px 2px 18px }
+  .hero h2 { margin:0; font-size:24px; line-height:1.2; letter-spacing:-.015em }
+  .hero p { margin:5px 0 0; max-width:68ch; color:var(--ink-soft); font-size:14px }
+  .stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:18px }
+  .stat { padding:10px 13px; border:1px solid var(--rule); border-radius:var(--radius-panel); background:var(--paper-2) }
+  .stat .label { color:var(--ink-faint); font-size:11px; font-weight:500 }
+  .stat .value { margin-top:2px; font-size:18px; font-weight:650 }
+  .stat .sub { margin-top:1px; color:var(--ink-soft); font-size:11px }
+  .panel { margin-bottom:18px; overflow:hidden; border:1px solid var(--rule); border-radius:var(--radius-panel); background:var(--paper-2) }
+  .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:42px; padding:8px 12px; border-bottom:1px solid var(--rule) }
+  .panel-head h3 { margin:0; font-size:13px; font-weight:600 }
+  .panel-head p { margin:1px 0 0; color:var(--ink-faint); font-size:11px }
+  .panel-body { padding:12px }
+  .scroll { overflow:auto; scrollbar-color:var(--rule) transparent }
+  .ruler { position:sticky; top:0; z-index:5; display:flex; min-width:960px; height:28px; margin-left:118px; background:var(--paper-2); border-bottom:1px solid var(--rule) }
+  .ruler-bar { flex:0 0 60px; padding:6px 0 0 6px; color:var(--ink-faint); font-size:10px; border-left:1px solid var(--rule-soft) }
+  .daw { position:relative; min-width:1078px }
+  .daw-head { position:absolute; top:0; bottom:0; left:118px; width:2px; z-index:10; background:var(--accent); pointer-events:none; transform:translateX(0) }
+  .lane { display:grid; grid-template-columns:118px 960px; min-height:42px; border-bottom:1px solid var(--rule-soft) }
+  .lane:last-child { border-bottom:0 }
+  .lane-label { position:sticky; left:0; z-index:4; display:flex; align-items:center; gap:8px; padding:0 9px; background:var(--paper-2); border-right:1px solid var(--rule) }
+  .lane-label button { width:20px; height:20px; padding:0; border:1px solid var(--rule); border-radius:50%; background:var(--control-bg); color:var(--ink-soft); cursor:pointer; font-size:9px }
+  .lane-label button.muted { background:var(--paper-3); color:var(--ink); text-decoration:line-through }
+  .lane-dot { width:8px; height:8px; flex:none; border-radius:50%; background:var(--track) }
+  .lane-name { min-width:0 }
+  .lane-name strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:600 }
+  .lane-name small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-faint); font-size:9px }
+  .lane-time { position:relative; display:flex; background-color:var(--paper); background-image:linear-gradient(to right,var(--rule-soft) 1px,transparent 1px),linear-gradient(to right,color-mix(in srgb,var(--rule-soft) 65%,transparent) 1px,transparent 1px); background-size:60px 100%,15px 100% }
+  .clip { position:relative; flex:0 0 240px; height:32px; margin:5px 0; overflow:hidden; border:1px solid color-mix(in srgb,var(--track) 55%,var(--rule)); border-radius:5px; background:color-mix(in srgb,var(--track) 14%,var(--paper)); cursor:pointer }
+  .clip.empty { border-color:var(--rule); border-style:dashed; background:var(--paper) }
+  .clip-name { position:absolute; top:3px; left:6px; z-index:2; color:color-mix(in srgb,var(--track) 70%,var(--ink)); font-size:10px; font-weight:600 }
+  .clip.empty .clip-name { color:var(--ink-soft); font-weight:500 }
+  #zoom-out,#zoom-in { background:var(--control-bg); color:var(--ink) }
+  .clip-events { position:absolute; inset:15px 4px 3px; display:grid; grid-template-columns:repeat(64,1fr); gap:1px }
+  .clip-hit { min-width:1px; border-radius:1px; background:var(--track); opacity:.76 }
+  .arrangement-strip { display:flex; min-width:960px; height:54px }
+  .arr-section { position:relative; flex:0 0 240px; padding:8px 10px; color:var(--ink); background:color-mix(in srgb,var(--section) 14%,var(--paper)); border-right:1px solid var(--paper); cursor:pointer }
+  .arr-section:hover { background:color-mix(in srgb,var(--section) 22%,var(--paper)) }
+  .arr-section strong { display:block; font-size:12px }
+  .arr-section span { color:var(--ink-soft); font-size:10px }
+  .pattern-picker { display:flex; gap:6px; flex-wrap:wrap }
+  .pattern-btn { min-width:55px; height:28px; padding:0 10px; border:.5px solid var(--control-border); border-radius:var(--radius-control); background:var(--control-bg); box-shadow:var(--control-shadow); cursor:pointer }
+  .pattern-btn.active { color:#fff; border-color:var(--accent); background:var(--accent) }
+  .step-ruler,.step-row { display:grid; grid-template-columns:118px repeat(64,15px); min-width:1078px }
+  .step-ruler { position:sticky; top:0; z-index:6; height:28px; background:var(--paper-2); border-bottom:1px solid var(--rule) }
+  .step-ruler > span { display:flex; align-items:center; justify-content:center; color:var(--ink-faint); font-size:8px; border-left:1px solid transparent }
+  .step-ruler > span.bar { border-left-color:var(--rule); color:var(--ink-soft); font-weight:600 }
+  .step-row { min-height:38px; border-bottom:1px solid var(--rule-soft) }
+  .step-row:last-child { border-bottom:0 }
+  .step-label { position:sticky; left:0; z-index:4; display:flex; align-items:center; gap:8px; padding:0 9px; background:var(--paper-2); border-right:1px solid var(--rule) }
+  .cell { position:relative; min-width:8px; border:0; border-left:1px solid color-mix(in srgb,var(--rule-soft) 65%,transparent); background:var(--paper); cursor:default }
+  .cell.beat { border-left-color:var(--rule) }
+  .cell.hit { margin:5px 1px; border:1px solid color-mix(in srgb,var(--track) 65%,transparent); border-radius:3px; background:color-mix(in srgb,var(--track) var(--alpha),var(--paper)); cursor:pointer }
+  .cell.hit:hover,.cell.hit.selected { outline:2px solid var(--accent); outline-offset:-1px }
+  .cell.hit.condition::after { content:"◒"; position:absolute; right:1px; bottom:-1px; color:var(--ink); font-size:7px }
+  .cell.hit.retrig::before { content:attr(data-rate); position:absolute; inset:0; display:grid; place-items:center; color:var(--ink); font-size:7px; font-weight:700 }
+  .pattern-head { position:absolute; top:0; bottom:0; left:118px; width:2px; z-index:10; background:var(--accent); pointer-events:none }
+  .proposed { min-width:980px; padding:12px }
+  .song-row { display:grid; grid-template-columns:34px 110px 70px minmax(420px,1fr) 62px; align-items:center; min-height:44px; border-bottom:1px solid var(--rule-soft) }
+  .song-row:last-child { border-bottom:0 }
+  .song-row > span { padding:0 8px }
+  .row-num,.row-bars { color:var(--ink-faint); text-align:right }
+  .row-label { font-weight:600 }
+  .row-pattern { color:var(--accent); font-weight:600 }
+  .row-timeline { position:relative; height:26px; border-radius:5px; background:var(--paper); overflow:hidden }
+  .row-fill { height:100%; min-width:24px; padding:5px 7px; color:var(--ink); background:color-mix(in srgb,var(--section) 20%,var(--paper)); border:1px solid color-mix(in srgb,var(--section) 50%,var(--rule)); border-radius:5px; font-size:10px; white-space:nowrap }
+  .tricks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
+  .trick { padding:14px; border:1px solid var(--rule); border-radius:var(--radius-panel); background:var(--paper-2) }
+  .trick h3 { display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:14px }
+  .trick p { margin:0 0 10px; color:var(--ink-soft) }
+  .trick pre { margin:0; padding:10px; overflow:auto; border:1px solid var(--rule-soft); border-radius:7px; background:var(--paper); color:var(--ink-soft); font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace }
+  .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 7px; border:1px solid var(--rule); border-radius:999px; color:var(--ink-soft); background:var(--paper); font-size:10px }
+  aside h3 { margin:0 0 6px 4px; font-size:12px; font-weight:600 }
+  .group { margin-bottom:16px; overflow:hidden; border:1px solid var(--group-line); border-radius:var(--radius-panel); background:var(--group) }
+  .kv { display:flex; align-items:flex-start; gap:12px; min-height:36px; padding:8px 11px }
+  .kv + .kv,.kv + .note,.note + .kv { border-top:1px solid var(--group-line) }
+  .kv > span:first-child { flex:none; color:var(--ink-soft) }
+  .kv > span:last-child { margin-left:auto; text-align:right; font-weight:500 }
+  .note { padding:8px 11px 10px; color:var(--ink-faint); font-size:11px }
+  .legend { display:flex; flex-wrap:wrap; gap:6px; padding:9px 11px }
+  .legend .pill::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--c) }
+  .analysis-link { display:block; padding:9px 11px; color:var(--accent); text-decoration:none }
+  .analysis-link:hover { text-decoration:underline }
+  .status { display:flex; align-items:center; gap:7px }
+  .status::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--good) }
+  .empty-state { padding:24px; color:var(--ink-faint); text-align:center }
+  @media (max-width:900px) {
+    .topbar { grid-template-columns:1fr auto }
+    .transport { grid-column:1 / -1; grid-row:2 }
+    .mini-timeline { width:min(65vw,440px) }
+    .layout { grid-template-columns:1fr; padding:14px 12px 32px }
+    aside { position:static; max-height:none }
+    .tabs-wrap { top:108px }
+    .stats { grid-template-columns:repeat(2,1fr) }
+    .tricks { grid-template-columns:1fr }
+  }
+  @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto!important } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <div><h1>Untitled Digitakt song</h1><small>Arrangement and pattern visualizer</small></div>
+  </div>
+  <div class="transport">
+    <button class="play" id="play" type="button" aria-label="Play"><svg viewBox="0 0 16 16"><path id="play-icon" d="M4 2.5v11l9-5.5z"/></svg></button>
+    <div class="transport-info"><strong id="position">Bar 1 · Beat 1</strong><span id="pattern-now">P1 Intro</span></div>
+    <button class="mini-timeline" id="mini-timeline" type="button" aria-label="Seek current arrangement">
+      <span class="mini-sections" id="mini-sections"></span><span class="mini-head" id="mini-head"></span>
+    </button>
+  </div>
+  <div class="controls">
+    <label class="field">BPM <input id="bpm" type="number" min="60" max="180" value="118"></label>
+    <div class="seg" role="group" aria-label="Playback scope">
+      <button type="button" data-scope="song" aria-pressed="true">Song</button>
+      <button type="button" data-scope="pattern" aria-pressed="false">Pattern</button>
+    </div>
+  </div>
+</header>
+<div class="tabs-wrap"><div class="tabs" role="tablist">
+  <button class="tab" role="tab" data-view="arrangement" aria-selected="true">Arrangement preview</button>
+  <button class="tab" role="tab" data-view="pattern" aria-selected="false">Pattern bank</button>
+  <button class="tab" role="tab" data-view="proposed" aria-selected="false">Song Mode plan</button>
+  <button class="tab" role="tab" data-view="live" aria-selected="false">Live design</button>
+  <button class="tab" role="tab" data-view="tricks" aria-selected="false">Sequencing tricks</button>
+</div></div>
+<div class="layout">
+<main>
+  <section class="view" id="view-arrangement">
+    <div class="hero"><div><h2>Horizontal song view</h2><p>The rebuilt live pattern bank in the proposed 80-bar order. Click a clip to inspect its pattern, click the ruler to seek, or mute tracks from the lane headers.</p></div><span class="pill">synthetic preview</span></div>
+    <div class="stats">
+      <div class="stat"><div class="label">Arrangement preview</div><div class="value">80 bars</div><div class="sub">P1–P10 · not written to Song Mode</div></div>
+      <div class="stat"><div class="label">Tempo</div><div class="value">118 BPM</div><div class="sub">editable in transport</div></div>
+      <div class="stat"><div class="label">Live pattern density</div><div class="value">5–66</div><div class="sub">P1–P15 programmed trigs</div></div>
+      <div class="stat"><div class="label">Raw archive</div><div class="value">119</div><div class="sub">P16 exact original P1</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div><h3>Arrangement</h3><p>Song Mode row lengths, left to right</p></div><div class="seg"><button type="button" id="zoom-out" aria-label="Zoom out"><svg aria-hidden="true" viewBox="0 0 10 10"><path d="M2 5h6"/></svg></button><button type="button" id="zoom-in" aria-label="Zoom in"><svg aria-hidden="true" viewBox="0 0 10 10"><path d="M2 5h6M5 2v6"/></svg></button></div></div>
+      <div class="scroll" id="arr-scroll"><div class="arrangement-strip" id="arrangement-strip" style="margin-left:118px"></div><div class="ruler" id="ruler"></div><div class="daw" id="daw"><div class="daw-head" id="daw-head"></div></div></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-pattern" hidden>
+    <div class="hero"><div><h2>Digitakt pattern grid</h2><p>Four pages in one horizontal tracker. Color intensity follows velocity; ◒ marks a condition; retrig cells show their rate.</p></div><div class="pattern-picker" id="pattern-picker"></div></div>
+    <div class="panel">
+      <div class="panel-head"><div><h3 id="pattern-title">P1 · Intro</h3><p id="pattern-subtitle">16 trigs · 4 bars · intro</p></div><span class="pill" id="pattern-role">intro</span></div>
+      <div class="scroll"><div style="position:relative;min-width:1078px"><div class="pattern-head" id="pattern-head"></div><div class="step-ruler" id="step-ruler"></div><div id="step-grid"></div></div></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-proposed" hidden>
+    <div class="hero"><div><h2>Song Mode plan</h2><p>An 80-bar hybrid: hip-hop phrase lengths, dance-style breakdown and build, then a 16-bar drop. The patterns are live; the rows remain a safe manual-entry plan.</p></div><span class="pill">not written to hardware</span></div>
+    <div class="stats">
+      <div class="stat"><div class="label">Total</div><div class="value">80 bars</div><div class="sub">12 song rows</div></div>
+      <div class="stat"><div class="label">Verse</div><div class="value">16 bars</div><div class="sub">8 + 7 + 1 turn</div></div>
+      <div class="stat"><div class="label">Build</div><div class="value">8 bars</div><div class="sub">4 + 3 + 1 turn</div></div>
+      <div class="stat"><div class="label">Drop</div><div class="value">16 bars</div><div class="sub">four P9 passes</div></div>
+    </div>
+    <div class="panel"><div class="panel-head"><div><h3>Song rows</h3><p>Row lengths are sequencer steps; one bar is 16 steps</p></div></div><div class="scroll"><div class="proposed" id="proposed-song"></div></div></div>
+  </section>
+
+  <section class="view" id="view-live" hidden>
+    <div class="hero"><div><h2>Live visualizer design</h2><p>A truthful live view combines transport events with cached pattern dumps. It does not claim to mirror the Digitakt OLED.</p></div><span class="pill">implementation plan</span></div>
+    <div class="stats">
+      <div class="stat"><div class="label">Fast stream</div><div class="value">MIDI events</div><div class="sub">clock, transport, notes, CC, program</div></div>
+      <div class="stat"><div class="label">Slow state</div><div class="value">Pattern cache</div><div class="sub">pull on stop, change, or request</div></div>
+      <div class="stat"><div class="label">Browser link</div><div class="value">WebSocket</div><div class="sub">local, read-only by default</div></div>
+      <div class="stat"><div class="label">Optional adapter</div><div class="value">Overbridge</div><div class="sub">private active pattern/song fields</div></div>
+    </div>
+    <div class="tricks">
+      <article class="trick"><h3>1 · Observe</h3><p>Capture MIDI Start, Stop, Continue, Clock, Song Position, Program Change, notes, and CC. Summarize high-rate clock traffic instead of returning every message.</p><pre>Digitakt MIDI
+  ├─ transport → live position
+  ├─ program   → active pattern
+  └─ notes/CC  → activity + automation</pre></article>
+      <article class="trick"><h3>2 · Cache</h3><p>Pull the 31 KB pattern-plus-kit dump only at stable boundaries. Polling a full dump on every tick would waste bandwidth and disturb timing.</p><pre>on connect       pull selected pattern
+on pattern change mark cache stale
+on stop/manual   refresh stale pattern</pre></article>
+      <article class="trick"><h3>3 · Render</h3><p>Merge the event stream and cache into the horizontal lanes already used here. Show observed state, cached state, and inferred state with separate labels.</p><pre>event stream + pattern cache
+            ↓
+bar / step / track activity
+conditions / locks / song rows</pre></article>
+      <article class="trick"><h3>4 · Control safely</h3><p>Opening the view must not write. Put pattern edits, CC moves, and transport controls behind explicit actions with readback and undo data.</p><pre>VIEW  read-only by default
+EDIT  preview diff → apply → read back
+UNDO  restore captured pattern dump</pre></article>
+    </div>
+  </section>
+
+  <section class="view" id="view-tricks" hidden>
+    <div class="hero"><div><h2>Sequencing tricks</h2><p>The arrangement ideas expressed as small, reusable recipes.</p></div></div>
+    <div class="tricks">
+      <article class="trick"><h3><span class="lane-dot" style="--track:#e35d6a"></span>Fourth-pass snare roll</h3><p>Retrig belongs to each trig. Length ends the burst; a later normal hit can interrupt it.</p><pre>Passes 1–3
+49  4:4      → false
+53  NOT PRE  → normal snare
+60  4:4      → false
+61  NOT PRE  → normal snare
+
+Pass 4
+49  4:4      → 1/8 roll
+53  NOT PRE  → skipped
+57  4:4      → 1/16 roll
+60  4:4      → 1/32 roll
+61  NOT PRE  → skipped</pre></article>
+      <article class="trick"><h3><span class="lane-dot" style="--track:#10b981"></span>A/B phrase on one pattern</h3><p>P2a and P2b are two passes of P2. Paired MIDI tracks can alternate parts on one Digitone voice.</p><pre>P2[128] = P2a + P2b
+
+T9   phrase A  condition 1:2
+T10  phrase B  condition 2:2
+
+Both → same Digitone channel</pre></article>
+      <article class="trick"><h3><span class="lane-dot" style="--track:#f59e0b"></span>Open-hat choke</h3><p>Use one monophonic sample track rather than layering open and closed hats on separate tracks.</p><pre>O·······O·······O···
+└ tail ─┘
+          new trig chokes old tail
+
+P5 uses loaded sample slot 7.</pre></article>
+      <article class="trick"><h3><span class="lane-dot" style="--track:#8b5cf6"></span>One-bar transition</h3><p>A 16-step transition can replace the eighth bar or add an intentional ninth bar.</p><pre>Keep 8 bars:
+P4 row 112 + P8 row 16 = 128
+7 bars     + 1 bar      = 8
+
+Odd-bar tension:
+P4 row 128 + P8 row 16 = 9 bars</pre></article>
+      <article class="trick"><h3><span class="lane-dot" style="--track:#5b8def"></span>Build without a riser</h3><p>Use note and CC behavior to create lift, then explicitly reset on the drop.</p><pre>filter cutoff    34 → 118
+resonance        18 → 82
+amp release      short → long
+note spacing     wide → tight
+
+DROP: reset all values</pre></article>
+      <article class="trick"><h3><span class="lane-dot" style="--track:#6c757d"></span>One voice at a time</h3><p>Foreground detail moves between parts. Supporting tracks can continue, but they stop making speeches.</p><pre>bar 1  bass moves, lead rests
+bar 2  lead answers, bass holds
+bar 3  groove returns
+bar 4  drums drop, fill owns turn</pre></article>
+    </div>
+  </section>
+</main>
+
+<aside>
+  <h3>Selection</h3>
+  <div class="group" id="selection-group">
+    <div class="kv"><span>Pattern</span><span id="sel-pattern">P1</span></div>
+    <div class="kv"><span>Track</span><span id="sel-track">Intro</span></div>
+    <div class="kv"><span>Position</span><span id="sel-position">4 bars</span></div>
+    <div class="note" id="sel-note">Click a clip or trigger for exact sequencing details.</div>
+  </div>
+  <h3>Playback</h3>
+  <div class="group">
+    <div class="kv"><span class="status">Web Audio</span><span>Synthetic</span></div>
+    <div class="kv"><span>Scope</span><span id="scope-label">Arrangement preview</span></div>
+    <div class="kv"><span>Loop</span><span>On</span></div>
+    <div class="note">This preview synthesizes the programmed rhythm and pitch. It does not reproduce the Digitakt samples or Digitone patches, and probabilistic events will vary.</div>
+  </div>
+  <h3>Track colors</h3>
+  <div class="group"><div class="legend" id="legend"></div></div>
+  <h3>Source</h3>
+  <div class="group">
+    <div class="kv"><span>Captured</span><span>P1–P16</span></div>
+    <div class="kv"><span>Visualized</span><span>Hardware-read step map</span></div>
+    <div class="note">Step positions and trig counts come from readback. Some archived MIDI pitch and velocity values are representative because those fields were not decoded one by one.</div>
+    <a class="analysis-link" href="../SONG_ARRANGEMENT_NOTES.md">Read the full arrangement notes</a>
+  </div>
+</aside>
+</div>
+<script>
+const TRACKS = [
+  {id:1,name:'Kick',kind:'kick',color:'#ef8354',group:'Digitakt'},
+  {id:2,name:'Snare',kind:'snare',color:'#e35d6a',group:'Digitakt'},
+  {id:3,name:'Hats',kind:'hat',color:'#f59e0b',group:'Digitakt'},
+  {id:4,name:'Chopped break',kind:'break',color:'#6c757d',group:'Digitakt'},
+  {id:9,name:'Keys A',kind:'keys',color:'#10b981',group:'Digitone 1'},
+  {id:10,name:'Keys B',kind:'keys',color:'#14b8a6',group:'Digitone 1'},
+  {id:11,name:'Bass A',kind:'bass',color:'#8b5cf6',group:'Digitone 2'},
+  {id:12,name:'Bass B',kind:'bass',color:'#a78bfa',group:'Digitone 2'},
+  {id:13,name:'Lead A',kind:'lead',color:'#5b8def',group:'Digitone 3'},
+  {id:14,name:'Lead B',kind:'lead',color:'#60a5fa',group:'Digitone 3'},
+  {id:15,name:'Turn A',kind:'turn',color:'#d4559b',group:'Digitone 4'},
+  {id:16,name:'Turn B',kind:'turn',color:'#f08ab8',group:'Digitone 4'}
+];
+const ev = (steps, velocity=90, extra={}) => steps.map((step,i)=>({step,velocity:Array.isArray(velocity)?velocity[i%velocity.length]:velocity,...extra}));
+const conditioned = (steps, condition, velocity=80, extra={}) => ev(steps,velocity,{...extra,condition});
+const PATTERNS = {
+  P1:{name:'Intro',role:'intro',trigs:16,tracks:{
+    1:ev([49,57],[94,84]),2:ev([53,61],[88,96]),3:ev([1,17,51,55,59,63],[68,64,62,68,64,72],{open:true}),
+    9:ev([1],91,{note:60}),11:ev([17],92,{note:50}),13:ev([33],91,{note:74}),
+    15:[62,63,64].map((step,i)=>({step,velocity:[93,87,64][i],note:[67,69,67][i]}))
+  }},
+  P2:{name:'Main',role:'hook',trigs:59,tracks:{
+    1:ev([1,9,17,25,31,33,41,49,57],[112,98,108,96,84]),2:ev([5,13,21,29,37,45,53,61],[100,100,100,100,100,100,100,100]),
+    3:ev(Array.from({length:16},(_,i)=>3+i*4),[86,72,82,68]),9:ev([17,23,29,30,49,55,61,62],[73,81,88,90,80,85,78,87],{note:62}),
+    11:ev([1,7,13,14,17,33,39,45,46,49],[108,119,119,105,98,119,110,110,93,101],{note:45}),
+    13:ev([1,17,33,49],[121,127,91,108],{note:74}),15:ev([54,62,63,64],[93,93,87,64],{note:67})
+  }},
+  P3:{name:'Verse A',role:'verse',trigs:36,tracks:{
+    1:ev([1,9,17,25,33,41,49,57],[110,96,104,92]),2:ev([5,13,21,29,37,45,53,61],100),
+    3:ev([3,11,19,27,35,43,51,59],[78,66,74,64]),9:ev([17,23,49,55],[73,81,80,85],{note:62}),
+    11:ev([1,7,17,33,39,49],[108,119,98,119,110,101],{note:45}),13:ev([1,33],[121,91],{note:74})
+  }},
+  P4:{name:'Verse B',role:'verse-down',trigs:38,tracks:{
+    1:ev([1,11,25,33,43,57],[110,88,98,110,88,98]),2:ev([13,29,45],100),3:ev([3,11,19,27,35,43,51],[74,64]),
+    10:ev([1,13,17,29,33,45,49,61],[107,110,101,93,119,123,98,87],{note:45}),
+    11:ev([1,13,17,33,45,49],[108,119,98,119,110,101],{note:45}),13:ev([1,33],[121,91],{note:74}),
+    15:[60,62,65,67,69,72].map((note,i)=>({step:[57,59,61,62,63,64][i],velocity:[72,78,84,90,98,108][i],note}))
+  }},
+  P5:{name:'Breakdown',role:'breakdown',trigs:7,tracks:{
+    3:ev([1],66,{open:true}),9:ev([1,17],[91,73],{note:60}),11:ev([33,49],[119,101],{note:45}),13:ev([1,33],[121,91],{note:74})
+  }},
+  P6:{name:'Build A',role:'build',trigs:36,tracks:{
+    1:ev([33,37,41,45,49,53,57,61],[104,94,94,94]),2:ev([37,45,53,61],[94,102,96,108]),
+    3:ev([1,17,35,39,43,47,51,55,59,63],[72,72,66,76],{open:true}),9:ev([1,17],[91,73],{note:60}),
+    11:ev([1,17,33,39,45,46,49,55,61,62],[90,92,119,110,110,93,101,94,90,94],{note:45}),13:ev([1,33],[121,91],{note:74})
+  },locks:{3:{cutoff:{1:34,17:42,35:52,39:60,43:68,47:76,51:84,55:94,59:106,63:118},resonance:{1:18,17:20,35:24,39:28,43:34,47:40,51:48,55:58,59:70,63:82}}}},
+  P7:{name:'Build B',role:'build',trigs:49,tracks:{
+    1:ev(Array.from({length:16},(_,i)=>1+i*4),[106,94,94,94]),2:ev([5,13,21,29,37,45,53,61],[94,100,96,102,98,104,100,108]),
+    3:ev(Array.from({length:16},(_,i)=>3+i*4),[72,62,66,62],{open:true}),9:ev([1,17],[91,73],{note:60}),
+    11:ev([33,39,45,46,49],[119,110,110,93,101],{note:45}),13:ev([1,33],[121,91],{note:74})
+  },locks:{3:{cutoff:Object.fromEntries(Array.from({length:16},(_,i)=>[3+i*4,[42,46,50,54,59,64,70,76,83,90,98,106,114,120,124,127][i]])),resonance:Object.fromEntries(Array.from({length:16},(_,i)=>[3+i*4,[18,20,22,25,28,31,35,39,44,49,55,62,69,76,84,92][i]]))}}},
+  P8:{name:'Turn',role:'transition',trigs:5,tracks:{
+    1:ev([1],108),2:[{step:5,velocity:86,retrig:'1/8',length:8,curve:2},{step:9,velocity:94,retrig:'1/16',length:4,curve:3},{step:13,velocity:102,retrig:'1/32',length:4,curve:4}],
+    15:ev([16],104,{note:72})
+  }},
+  P9:{name:'Drop',role:'drop',trigs:66,tracks:{
+    1:ev(Array.from({length:16},(_,i)=>1+i*4),[114,100,100,100]),2:ev([5,13,21,29,37,45,53,61],100),
+    3:ev(Array.from({length:16},(_,i)=>3+i*4),[90,74,84,70]),9:ev([17,23,29,30,49,55,61,62],[73,81,88,90,80,85,78,87],{note:62}),
+    11:ev([1,7,13,14,17,33,39,45,46,49],[108,119,119,105,98,119,110,110,93,101],{note:45}),
+    13:ev([1,17,33,49],[121,127,91,108],{note:74}),15:ev([54,62,63,64],[93,93,87,64],{note:67})
+  }},
+  P10:{name:'Outro',role:'outro',trigs:16,tracks:{
+    1:ev([1,9,17,25],[112,98,108,96]),2:ev([5,13,21,29],100),3:ev([3,11,19,27,35,51],[78,66,74,64]),
+    9:ev([1],91,{note:60}),11:ev([17],98,{note:45})
+  }},
+  P11:{name:'Probability groove',role:'experiment',trigs:48,tracks:{
+    1:[...ev([1,9,17,25,33,41,49,57],[110,96,104,92]),...conditioned([7,23,39,55],'33%',58)],
+    2:[...ev([5,13,21,29,37,45,53,61],100),...conditioned([12,28,44,60],'41%',48)],
+    3:ev([3,11,19,27,35,43,51,59],[78,66,74,64]),4:conditioned([51,55,59,63],'FILL',76),
+    9:ev([17,23,49,55],[73,81,80,85],{note:62}),11:ev([1,7,17,33,39,49],[108,119,98,119,110,101],{note:45}),13:ev([1,33],[121,91],{note:74})
+  }},
+  P12:{name:'Atmosphere',role:'experiment',trigs:11,tracks:{
+    3:ev([1],62,{open:true}),4:[{step:1,velocity:68},{step:17,velocity:62,condition:'50%'},{step:33,velocity:66},{step:49,velocity:58,condition:'50%'}],
+    9:ev([1,17],[91,73],{note:60}),11:ev([33,49],[119,101],{note:45}),13:[{step:1,velocity:121,note:74},{step:33,velocity:91,note:74,condition:'75%'}]
+  },locks:{4:{cutoff:{1:34,17:42,33:28,49:52},resonance:{1:58,17:72,33:64,49:80},reverb:{1:92,17:106,33:98,49:114}}}},
+  P13:{name:'Bass run',role:'experiment',trigs:42,tracks:{
+    1:ev([1,9,17,25,33,41,49,57],[110,96,104,92]),2:ev([5,13,21,29,37,45,53,61],100),3:ev([3,11,19,27,35,43,51,59],[78,66,74,64]),
+    9:ev([17,23,49,55],[73,81,80,85],{note:62}),11:ev([1,7,17,33,39],[108,119,98,119,110],{note:45}),
+    12:[36,38,39,43,46,48,50,51].map((note,i)=>({step:[49,52,55,57,59,61,63,64][i],velocity:[78,80,84,88,92,98,104,110][i],note})),13:ev([1],121,{note:74})
+  }},
+  P14:{name:'FILL switch',role:'experiment',trigs:64,tracks:{
+    1:ev([1,9,17,25,31,33,41,49,57],[112,98,108,96,84]),2:[
+      ...ev([5,13,21,29,37,45],100),...conditioned([53,61],'NOT FILL',100),
+      {step:49,velocity:88,retrig:'1/8',length:8,curve:2,condition:'FILL'},{step:57,velocity:96,retrig:'1/16',length:4,curve:3,condition:'FILL'},{step:60,velocity:104,retrig:'1/32',length:4,curve:4,condition:'FILL'}
+    ],3:ev(Array.from({length:16},(_,i)=>3+i*4),[86,72,82,68]),9:ev([17,23,29,30,49,55,61,62],80,{note:62}),
+    11:ev([1,7,13,14,17,33,39,45,46,49],108,{note:45}),13:ev([1,17,33,49],108,{note:74}),
+    15:conditioned([57,59,61,62,63,64],'NOT FILL',[72,78,84,90,98,108],{note:67})
+  }},
+  P15:{name:'Fourth pass',role:'experiment',trigs:63,tracks:{
+    1:ev([1,9,17,25,31,33,41,49,57],[112,98,108,96,84]),2:[
+      ...ev([5,13,21,29,37,45],100),...conditioned([53,61],'NOT PRE',100),
+      {step:49,velocity:88,retrig:'1/8',length:8,curve:2,condition:'4:4'},{step:57,velocity:96,retrig:'1/16',length:4,curve:3,condition:'4:4'},{step:60,velocity:104,retrig:'1/32',length:4,curve:4,condition:'4:4'}
+    ],3:ev(Array.from({length:16},(_,i)=>3+i*4),[86,72,82,68]),9:ev([17,23,29,30,49,55,61,62],80,{note:62}),
+    11:ev([1,7,13,14,17,33,39,45,46,49],108,{note:45}),13:ev([1,17,33,49],108,{note:74}),
+    15:[{step:37,velocity:74,note:60,condition:'2:4'},...ev([54,62,63,64],[93,93,87,64],{note:67})]
+  }},
+  P16:{name:'Raw full archive',role:'archive',trigs:119,tracks:{
+    1:ev([1,13,17,23,25,33,45,49,55,56,57,61,63],100),2:ev([5,13,21,29,37,45,49,53,57,60,61,64],100),
+    3:ev(Array.from({length:16},(_,i)=>3+i*4),100),4:ev([3,4,7,11,15,19,20,23,27,31,35,36,39,43,47,51,52,55,59,63],110),
+    9:ev([1,17,33,49,55],90,{note:60}),10:ev([1,13,14,17,23,29,30,33,45,46,49,55,61,62],100,{note:45}),
+    11:ev([1,7,13,14,17,23,33,39,45,46,49,55],108,{note:45}),12:ev([1,9,17,25],90,{note:50}),
+    13:ev([1,17,33,49],108,{note:74}),14:ev([1,4,7,8,9,11,12,17,20,23,25,28],90,{note:67}),15:ev([37,41,45,54,62,63,64],93,{note:67})
+  }}
+};
+const CURRENT = [
+  {label:'Intro',pattern:'P1',steps:128,bars:8,color:'#6c757d'},
+  {label:'Hook',pattern:'P2',steps:128,bars:8,color:'#6a4fd8'},
+  {label:'Verse A',pattern:'P3',steps:128,bars:8,color:'#5b8def'},
+  {label:'Verse B',pattern:'P4',steps:112,bars:7,color:'#8b5cf6'},
+  {label:'Verse turn',pattern:'P8',steps:16,bars:1,color:'#d4559b'},
+  {label:'Hook',pattern:'P2',steps:128,bars:8,color:'#6a4fd8'},
+  {label:'Breakdown',pattern:'P5',steps:128,bars:8,color:'#f2994a'},
+  {label:'Build A',pattern:'P6',steps:64,bars:4,color:'#10b981'},
+  {label:'Build B',pattern:'P7',steps:48,bars:3,color:'#14b8a6'},
+  {label:'Drop turn',pattern:'P8',steps:16,bars:1,color:'#d4559b'},
+  {label:'Drop',pattern:'P9',steps:256,bars:16,color:'#e35d6a'},
+  {label:'Outro',pattern:'P10',steps:128,bars:8,color:'#6c757d'}
+];
+const PROPOSED = CURRENT;
+const $=id=>document.getElementById(id);
+let selectedPattern='P1', selectedView='arrangement', scope='song', playing=false, currentStep=0, nextTime=0, timer=null, audio=null, master=null, noise=null, muted=new Set(), pxPerBar=60;
+const totalSteps=()=>scope==='song'?CURRENT.reduce((n,s)=>n+s.bars*16,0):64;
+const track=id=>TRACKS.find(t=>t.id===+id);
+const patternAt=step=>{let cursor=0;for(const s of CURRENT){const len=s.bars*16;if(step<cursor+len)return {section:s,local:step-cursor};cursor+=len}return {section:CURRENT[0],local:0}};
+function renderMini(){
+  $('mini-sections').innerHTML=CURRENT.map(s=>`<span class="mini-section" style="flex:${s.bars};background:${s.color}" title="${s.label}"></span>`).join('');
+}
+function renderArrangement(){
+  const totalBars=CURRENT.reduce((n,s)=>n+s.bars,0);
+  $('arrangement-strip').innerHTML=CURRENT.map((s,i)=>`<div class="arr-section" data-section="${i}" style="--section:${s.color};flex-basis:${s.bars*pxPerBar}px"><strong>${s.pattern} · ${s.label}</strong><span>${s.bars} bars</span></div>`).join('');
+  $('ruler').style.minWidth=`${totalBars*pxPerBar}px`;
+  $('ruler').innerHTML=Array.from({length:totalBars},(_,i)=>`<span class="ruler-bar" style="flex-basis:${pxPerBar}px">${i+1}</span>`).join('');
+  const daw=$('daw'); daw.style.minWidth=`${118+totalBars*pxPerBar}px`;
+  daw.querySelectorAll('.lane').forEach(n=>n.remove());
+  TRACKS.forEach(t=>{
+    const row=document.createElement('div'); row.className='lane'; row.style.setProperty('--track',t.color); row.style.gridTemplateColumns=`118px ${totalBars*pxPerBar}px`;
+    const clips=CURRENT.map(s=>{const events=PATTERNS[s.pattern].tracks[t.id]||[];const cells=Array.from({length:64},(_,i)=>events.some(e=>e.step===i+1)?'<i class="clip-hit"></i>':'<i></i>').join('');return `<div class="clip ${events.length?'':'empty'}" data-pattern="${s.pattern}" data-track="${t.id}" style="--track:${t.color};flex-basis:${s.bars*pxPerBar}px"><span class="clip-name">${events.length?s.pattern+' · '+events.length+' trigs':'rest'}</span><span class="clip-events">${cells}</span></div>`}).join('');
+    row.innerHTML=`<div class="lane-label"><button type="button" data-mute="${t.id}" title="Mute ${t.name}">M</button><span class="lane-dot"></span><span class="lane-name"><strong>T${t.id} ${t.name}</strong><small>${t.group}</small></span></div><div class="lane-time" style="width:${totalBars*pxPerBar}px">${clips}</div>`;
+    daw.append(row);
+  });
+  daw.querySelectorAll('[data-mute]').forEach(b=>b.addEventListener('click',()=>{const id=+b.dataset.mute;muted.has(id)?muted.delete(id):muted.add(id);b.classList.toggle('muted',muted.has(id))}));
+  daw.querySelectorAll('.clip').forEach(c=>c.addEventListener('click',()=>{selectedPattern=c.dataset.pattern;showSelection(selectedPattern,+c.dataset.track);renderPattern();switchView('pattern')}));
+  $('arrangement-strip').querySelectorAll('.arr-section').forEach(el=>el.addEventListener('click',()=>{currentStep=CURRENT.slice(0,+el.dataset.section).reduce((n,s)=>n+s.bars*16,0);syncUI()}));
+}
+function renderPattern(){
+  const p=PATTERNS[selectedPattern];
+  $('pattern-picker').innerHTML=Object.entries(PATTERNS).map(([id,x])=>`<button class="pattern-btn ${id===selectedPattern?'active':''}" data-pattern="${id}" type="button">${id} · ${x.name}</button>`).join('');
+  $('pattern-title').textContent=`${selectedPattern} · ${p.name}`; $('pattern-subtitle').textContent=`${p.trigs} trigs · 4 bars · ${p.role}`; $('pattern-role').textContent=p.role;
+  $('step-ruler').innerHTML='<span></span>'+Array.from({length:64},(_,i)=>`<span class="${i%16===0?'bar':''}">${i%4===0?(Math.floor(i/4)%4)+1:''}</span>`).join('');
+  const grid=$('step-grid');grid.innerHTML='';
+  TRACKS.forEach(t=>{const events=p.tracks[t.id]||[];const row=document.createElement('div');row.className='step-row';row.style.setProperty('--track',t.color);
+    let html=`<div class="step-label"><span class="lane-dot"></span><span class="lane-name"><strong>T${t.id} ${t.name}</strong><small>${t.group}</small></span></div>`;
+    for(let i=1;i<=64;i++){
+      const e=events.find(x=>x.step===i), classes=['cell',i%4===1?'beat':'',e?'hit':'',e?.condition?'condition':'',e?.retrig?'retrig':''].filter(Boolean).join(' ');
+      html+=e
+        ? `<button type="button" class="${classes}" style="--alpha:${Math.round(15+e.velocity/127*55)}%" data-pattern="${selectedPattern}" data-track="${t.id}" data-step="${i}" data-rate="${e.retrig||''}" title="T${t.id} · step ${i} · velocity ${e.velocity}"></button>`
+        : `<span class="${classes}" aria-hidden="true"></span>`;
+    }
+    row.innerHTML=html;grid.append(row);
+  });
+  grid.querySelectorAll('.cell.hit').forEach(c=>c.addEventListener('click',()=>{grid.querySelectorAll('.cell.selected').forEach(x=>x.classList.remove('selected'));c.classList.add('selected');showTrigger(c.dataset.pattern,+c.dataset.track,+c.dataset.step)}));
+  $('pattern-picker').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{selectedPattern=b.dataset.pattern;currentStep=0;renderPattern();showSelection(selectedPattern)}));
+  showSelection(selectedPattern);
+}
+function renderProposed(){
+  const max=16;$('proposed-song').innerHTML=PROPOSED.map((r,i)=>`<div class="song-row" style="--section:${r.color}"><span class="row-num">${i+1}</span><span class="row-label">${r.label}</span><span class="row-pattern">${r.pattern}</span><div class="row-timeline"><div class="row-fill" style="width:${r.bars/max*100}%">${r.steps} steps</div></div><span class="row-bars">${r.bars} bars</span></div>`).join('')+'<div class="song-row"><span class="row-num">13</span><span class="row-label">End</span><span class="row-pattern">STOP</span><div></div><span></span></div>';
+}
+function renderLegend(){$('legend').innerHTML=TRACKS.filter(t=>[1,2,3,9,11,13,15].includes(t.id)).map(t=>`<span class="pill" style="--c:${t.color}">T${t.id} ${t.name}</span>`).join('')}
+function showSelection(pid,tid){const p=PATTERNS[pid],t=tid?track(tid):null;$('sel-pattern').textContent=pid;$('sel-track').textContent=t?`T${t.id} ${t.name}`:p.name;$('sel-position').textContent=t?`${(p.tracks[tid]||[]).length} trigs`:'4 bars';$('sel-note').textContent=t?`${t.group}. Click a trigger for velocity, condition, note, and lock details.`:`${p.trigs} programmed trigs. Role: ${p.role}.`}
+function showTrigger(pid,tid,step){const p=PATTERNS[pid],t=track(tid),e=(p.tracks[tid]||[]).find(x=>x.step===step),bar=Math.floor((step-1)/16)+1,local=(step-1)%16,beat=Math.floor(local/4)+1,sub=['','e','&','a'][local%4],locks=p.locks?.[tid],lockText=locks?Object.entries(locks).map(([k,v])=>v[step]!=null?`${k} ${v[step]}`:'').filter(Boolean).join(', '):'';$('sel-pattern').textContent=pid;$('sel-track').textContent=`T${tid} ${t.name}`;$('sel-position').textContent=`Bar ${bar}, ${beat}${sub}`;$('sel-note').textContent=[`Velocity ${e.velocity}.`,e.note!=null?`Note ${e.note}.`:'',e.retrig?`Retrig ${e.retrig}, length ${e.length} steps, curve +${e.curve}.`:'',e.condition?`Condition ${e.condition}.`:'',lockText?`Locks: ${lockText}.`:''].filter(Boolean).join(' ')}
+function switchView(view){selectedView=view;document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==`view-${view}`);document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.view===view));if(view==='pattern')renderPattern()}
+function setupTabs(){document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));document.querySelectorAll('[data-scope]').forEach(b=>b.addEventListener('click',()=>{scope=b.dataset.scope;currentStep=0;document.querySelectorAll('[data-scope]').forEach(x=>x.setAttribute('aria-pressed',x===b));$('scope-label').textContent=scope==='song'?'Arrangement preview':`${selectedPattern} only`;syncUI()}))}
+function audioInit(){if(audio)return;audio=new AudioContext();master=audio.createGain();master.gain.value=.28;master.connect(audio.destination)}
+function noiseBuffer(){if(noise)return noise;const b=audio.createBuffer(1,audio.sampleRate*.3,audio.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;noise=b;return noise}
+function kick(time,vel){const o=audio.createOscillator(),g=audio.createGain();o.frequency.setValueAtTime(145,time);o.frequency.exponentialRampToValueAtTime(48,time+.11);g.gain.setValueAtTime(.9*vel,time);g.gain.exponentialRampToValueAtTime(.001,time+.28);o.connect(g).connect(master);o.start(time);o.stop(time+.3)}
+function snare(time,vel){const n=audio.createBufferSource(),f=audio.createBiquadFilter(),g=audio.createGain();n.buffer=noiseBuffer();f.type='highpass';f.frequency.value=900;g.gain.setValueAtTime(.45*vel,time);g.gain.exponentialRampToValueAtTime(.001,time+.16);n.connect(f).connect(g).connect(master);n.start(time);n.stop(time+.18);const o=audio.createOscillator(),og=audio.createGain();o.frequency.value=180;og.gain.setValueAtTime(.18*vel,time);og.gain.exponentialRampToValueAtTime(.001,time+.11);o.connect(og).connect(master);o.start(time);o.stop(time+.12)}
+function hat(time,vel,open=false){const n=audio.createBufferSource(),f=audio.createBiquadFilter(),g=audio.createGain();n.buffer=noiseBuffer();f.type='highpass';f.frequency.value=6000;const len=open?.28:.055;g.gain.setValueAtTime(.18*vel,time);g.gain.exponentialRampToValueAtTime(.001,time+len);n.connect(f).connect(g).connect(master);n.start(time);n.stop(time+len+.02)}
+function tone(time,vel,note,kind){const o=audio.createOscillator(),f=audio.createBiquadFilter(),g=audio.createGain();o.type=kind==='bass'?'square':kind==='lead'?'sawtooth':'triangle';o.frequency.value=440*Math.pow(2,((note||60)-69)/12);f.type='lowpass';f.frequency.value=kind==='bass'?700:1800;g.gain.setValueAtTime(.09*vel,time);g.gain.exponentialRampToValueAtTime(.001,time+(kind==='keys'?.35:.18));o.connect(f).connect(g).connect(master);o.start(time);o.stop(time+.4)}
+function soundEvent(t,e,time,stepDur){if(muted.has(t.id))return;const v=Math.max(.15,e.velocity/127);if(t.kind==='kick')kick(time,v);else if(t.kind==='snare'){if(e.retrig){const every=e.retrig==='1/8'?stepDur*2:e.retrig==='1/16'?stepDur:stepDur/2;const count=Math.round(e.length*stepDur/every);for(let i=0;i<count;i++)snare(time+i*every,Math.min(1,v+i*(e.curve||0)/127))}else snare(time,v)}else if(t.kind==='hat')hat(time,v,e.open);else if(['keys','bass','lead','turn'].includes(t.kind))tone(time,v,e.note,t.kind)}
+function conditionAllows(e,pass){if(!e.condition)return true;if(e.condition==='33%')return Math.random()<.33;if(e.condition==='41%')return Math.random()<.41;if(e.condition==='50%')return Math.random()<.5;if(e.condition==='75%')return Math.random()<.75;if(e.condition==='FILL')return false;if(e.condition==='NOT FILL')return true;if(e.condition==='2:4')return pass%4===2;if(e.condition==='4:4')return pass%4===0;if(e.condition==='NOT PRE')return pass%4!==0;return true}
+function eventsAt(step,time,stepDur){const info=scope==='song'?patternAt(step):{section:{pattern:selectedPattern,label:PATTERNS[selectedPattern].name},local:step};const p=PATTERNS[info.section.pattern],local=info.local%64+1,pass=Math.floor(info.local/64)+1;TRACKS.forEach(t=>(p.tracks[t.id]||[]).filter(e=>e.step===local&&conditionAllows(e,pass)).forEach(e=>soundEvent(t,e,time,stepDur)))}
+function scheduler(){const bpm=Math.max(60,Math.min(180,+$('bpm').value||118)),stepDur=60/bpm/4;while(nextTime<audio.currentTime+.1){eventsAt(currentStep,nextTime,stepDur);nextTime+=stepDur;currentStep=(currentStep+1)%totalSteps()}syncUI()}
+async function togglePlay(){audioInit();await audio.resume();playing=!playing;$('play').setAttribute('aria-label',playing?'Pause':'Play');$('play-icon').setAttribute('d',playing?'M3 2.5h3.5v11H3zm6.5 0H13v11H9.5z':'M4 2.5v11l9-5.5z');if(playing){nextTime=audio.currentTime+.05;timer=setInterval(scheduler,25)}else{clearInterval(timer);timer=null;master.gain.cancelScheduledValues(audio.currentTime);master.gain.setValueAtTime(0,audio.currentTime);master.gain.linearRampToValueAtTime(.28,audio.currentTime+.03)}}
+function syncUI(){const info=scope==='song'?patternAt(currentStep):{section:{pattern:selectedPattern,label:PATTERNS[selectedPattern].name},local:currentStep},bar=Math.floor(currentStep/16)+1,beat=Math.floor((currentStep%16)/4)+1;$('position').textContent=`Bar ${bar} · Beat ${beat}`;$('pattern-now').textContent=`${info.section.pattern} ${info.section.label}`;const pct=currentStep/totalSteps()*100;$('mini-head').style.left=`${pct}%`;$('daw-head').style.transform=`translateX(${currentStep/16*pxPerBar}px)`;$('pattern-head').style.transform=`translateX(${(info.local%64)/16*240}px)`}
+function seekFrom(el,e){const r=el.getBoundingClientRect();currentStep=Math.floor((e.clientX-r.left)/r.width*totalSteps());syncUI()}
+function setZoom(delta){pxPerBar=Math.max(40,Math.min(100,pxPerBar+delta));renderArrangement();syncUI()}
+renderMini();renderArrangement();renderPattern();renderProposed();renderLegend();setupTabs();syncUI();
+$('play').addEventListener('click',togglePlay);$('mini-timeline').addEventListener('click',e=>seekFrom($('mini-timeline'),e));$('ruler').addEventListener('click',e=>seekFrom($('ruler'),e));$('zoom-in').addEventListener('click',()=>setZoom(10));$('zoom-out').addEventListener('click',()=>setZoom(-10));
+addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|SELECT/.test(e.target.tagName)){e.preventDefault();togglePlay()}if(e.key==='ArrowRight'){currentStep=(currentStep+16)%totalSteps();syncUI()}if(e.key==='ArrowLeft'){currentStep=(currentStep-16+totalSteps())%totalSteps();syncUI()}});
+</script>
+</body>
+</html>

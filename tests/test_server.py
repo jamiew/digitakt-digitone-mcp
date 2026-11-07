@@ -311,6 +311,25 @@ class TestExport:
         ]
 
 
+class TestRecording:
+    async def test_monitor_summarizes_realtime_floods_and_keeps_useful_events(self, any_device):
+        pending = [mido.Message("clock") for _ in range(100)]
+        pending.append(mido.Message("control_change", control=23, value=96))
+
+        def iter_pending():
+            nonlocal pending
+            messages, pending = pending, []
+            return iter(messages)
+
+        any_device.port.iter_pending = iter_pending
+
+        result = await any_device.call("monitor_midi_input", duration=0.02)
+
+        assert "Received 101 messages (clock=100, control_change=1)." in result
+        assert "control_change channel=0 control=23 value=96" in result
+        assert result.count("clock") == 1
+
+
 class TestResources:
     async def test_status_reports_the_connection(self, any_device):
         slug = any_device.device.spec.slug
