@@ -45,15 +45,13 @@ dev = [
     "ty>=0.0.99",
     "looptime>=0.9",
 ]
-# The live LLM test harness in harness/. Not needed to run the MCP servers.
+# The live LLM test harness in harness/. Not needed to run the MCP servers or the
+# tests, so it's opt-in: `uv sync --group harness`.
 harness = [
     "anthropic>=2.6.0",
     "openai>=3.46.0",
     "python-dotenv>=1.2.4",
 ]
-
-[tool.uv]
-default-groups = ["dev", "harness"]
 
 [tool.ruff]
 target-version = "py311"
