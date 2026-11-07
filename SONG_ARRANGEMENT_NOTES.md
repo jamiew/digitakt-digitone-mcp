@@ -767,7 +767,7 @@ Concrete gaps found during this song:
 2. Hardware pattern dumps, trig conditions, kit MIDI routing, CC Select mapping, and Song Mode are not first-class tools.
 3. `monitor_midi_input` returned 133,617 individual MIDI Clock messages during a loopback probe. It now summarizes clock and active-sensing traffic, retains useful events, and caps examples.
 4. A long `play_with_clock` call can exceed the MCP client's 30-second request timeout even though playback may continue. Long playback should return a task handle or rely on progress without holding one request.
-5. Composition knowledge did not belong in tool descriptions because the schema budget is already tight. It now lives in `songwriting://guide`, two workflow prompts, and the repository `songwriting` skill with genre references.
+5. Composition knowledge does not belong in tool descriptions because the schema budget is already tight. It should live in a resource, prompt, or skill instead.
 
 Recommended next hardware APIs:
 
