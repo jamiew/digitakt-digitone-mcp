@@ -203,6 +203,9 @@ targets that channel, not a track.
 | Export | `export_pattern_to_midi`, `export_automation_to_midi`, `save_last_melody` |
 | Recording | `monitor_midi_input`, `record_midi_input`, `list_midi_recordings`, `play_midi_file` |
 
+`monitor_midi_input` summarizes MIDI Clock and Active Sensing instead of flooding the
+result, while retaining notes, CC, program changes, and other useful events.
+
 Digitakt adds `trigger_track`, `set_trig_note`, `set_trig_velocity`, `set_trig_length`,
 `reset_velocities`, `play_pattern_with_tracks`, `play_pattern_with_tracks_and_melody`,
 `save_last_pattern`, and the storage tools below: `list_drive`, `list_sample_slots`,

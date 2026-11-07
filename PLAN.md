@@ -177,6 +177,13 @@ a Digitakt II spec ever lands, where its expectations become correct).
       [`mzero/elk-herd`](https://github.com/mzero/elk-herd) (BSD-2) documents the struct
       layouts per OS version and is the most authoritative public source; its author was
       given Elektron's actual headers. Covers Digitakt and Digitakt II, not Digitone.
+- [ ] **Live arrangement visualizer and control surface.** Merge MIDI transport/events
+      with cached pattern dumps over a local WebSocket. Keep viewing read-only by
+      default, refresh full dumps only at stable boundaries, and label observed, cached,
+      and inferred state separately.
+- [ ] **Safe Song Mode read/write.** Song Mode lives inside the proprietary compressed
+      project payload rather than the documented per-pattern SysEx. Add it only after
+      round-trip fixtures prove row length, repeat, mute, tempo, and stop markers.
 - [ ] **Chorus map disagreement on the Digitone.** `set_chorus` sends CCs from
       `ChorusCC`, while `set_parameter("chorus_mix")` sends NRPNs from `ChorusParams`. At
       most one is right for the mk1; check on hardware.
