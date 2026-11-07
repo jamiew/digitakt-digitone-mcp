@@ -22,10 +22,11 @@ from mcp.types import Tool as MCPTool
 from mcp.types import ToolAnnotations
 from pydantic import Field, WithJsonSchema
 
-from elektron_mcp import clock, midifile
+from elektron_mcp import clock, midifile, pattern_language
 from elektron_mcp.clock import Event, cc_event, note_event
 from elektron_mcp.device import DeviceSpec, Parameter
 from elektron_mcp.elektroid import Elektroid
+from elektron_mcp.live import EventBus, PatternPlayer
 from elektron_mcp.midi import MidiConnection, available_ports, note_name
 from elektron_mcp.storage import Storage, read_json, write_json
 
@@ -69,11 +70,15 @@ AutomationLoop = Annotated[int, Field(ge=0, description="Bars for the automation
 
 
 def _instructions(spec: DeviceSpec) -> str:
+    aliases = ", ".join(sorted(spec.pattern_aliases))
     return (
         f"Controls an Elektron {spec.display_name} over USB MIDI. {spec.notes}\n"
         "Channels are 1-16 as shown on the device. Beats are quarter notes counted from 0 (4 per bar). "
-        f"list_parameters gives parameter names; the midi://{spec.slug}/parameters resource has CC/NRPN "
-        "numbers and ranges. 'Not connected' errors mean the device wasn't on USB when the server started."
+        f"Text patterns use one character per step: x hit, X accent, o ghost, 1-9 level, . rest, - hold; "
+        f"track names include t1-t{spec.track_count}, ch1-ch16, and {aliases}. "
+        "Use check_pattern before play_pattern_text; a new pattern queues at the end of the current loop. "
+        f"list_parameters gives parameter names; midi://{spec.slug}/parameters has CC/NRPN ranges and "
+        f"midi://{spec.slug}/live has playback events."
     )
 
 
@@ -122,6 +127,11 @@ class DeviceServer:
     elektroid: Elektroid
     """Storage access (+Drive, sample slots, sounds). Tools read it at call time, so tests can swap it."""
     history: PlaybackHistory = field(default_factory=PlaybackHistory)
+    events: EventBus = field(default_factory=EventBus)
+    player: PatternPlayer = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.player = PatternPlayer(self.connection.send, self.events)
 
     # -------------------------------------------------------------- helpers
 
@@ -212,6 +222,7 @@ def build_server(spec: DeviceSpec, *, storage_root=None) -> DeviceServer:
     _register_playback(device)
     _register_automation(device)
     _register_patterns(device)
+    _register_pattern_language(device)
     _register_presets(device)
     _register_export(device)
     _register_recording(device)
@@ -722,6 +733,12 @@ def _register_automation(device: DeviceServer) -> None:
 def _register_patterns(device: DeviceServer) -> None:
     storage = device.storage
 
+    def require_structured(data: dict, name: str) -> None:
+        if data.get("format") == "text":
+            raise ToolError(
+                f"Pattern '{name}' uses text notation. Replace it with save_pattern_text instead of structured edits."
+            )
+
     @device.tool(WRITES)
     def save_pattern(
         pattern_name: Annotated[str, Field(description="Name to save under.")],
@@ -762,6 +779,15 @@ def _register_patterns(device: DeviceServer) -> None:
         data = read_json(path)
         if data is None:
             raise ToolError(f"Pattern '{path.stem}' not found at {path}")
+        if data.get("format") == "text":
+            try:
+                parsed = pattern_language.parse_pattern(data.get("text", ""), device.spec)
+            except pattern_language.NotationError as exc:
+                raise ToolError(f"Saved pattern '{path.stem}' is invalid:\n{exc}") from None
+            return (
+                f"Loaded text pattern '{path.stem}': {data.get('description', 'No description')}\n"
+                f"{pattern_language.render_pattern(parsed)}\n\n{data.get('text', '')}"
+            )
 
         return (
             f"Loaded pattern '{path.stem}':\n"
@@ -783,13 +809,22 @@ def _register_patterns(device: DeviceServer) -> None:
         for path in paths:
             try:
                 data = read_json(path) or {}
-                lines.append(f"- {data.get('name', path.stem)}: {data.get('description', 'No description')}")
-                lines.append(
-                    f"    BPM: {data.get('bpm', '?')}, Bars: {data.get('bars', '?')}, "
-                    f"Triggers: {len(data.get('track_triggers', []))}, "
-                    f"Channels: {list(data.get('midi_channels', {}))}"
-                )
-            except (OSError, json.JSONDecodeError) as exc:
+                name = data.get("name", path.stem)
+                description = data.get("description", "No description")
+                lines.append(f"- {name}: {description}")
+                if data.get("format") == "text":
+                    parsed = pattern_language.parse_pattern(data.get("text", ""), device.spec)
+                    lines.append(
+                        f"    Text: {parsed.length} steps, {parsed.bpm} BPM, "
+                        f"tracks: {[track.name for track in parsed.tracks]}"
+                    )
+                else:
+                    lines.append(
+                        f"    BPM: {data.get('bpm', '?')}, Bars: {data.get('bars', '?')}, "
+                        f"Triggers: {len(data.get('track_triggers', []))}, "
+                        f"Channels: {list(data.get('midi_channels', {}))}"
+                    )
+            except (OSError, json.JSONDecodeError, pattern_language.NotationError) as exc:
                 lines.append(f"- {path.stem}: (could not read: {exc})")
 
         lines += ["", f"Patterns stored in: {storage.patterns}"]
@@ -820,6 +855,7 @@ def _register_patterns(device: DeviceServer) -> None:
         data = read_json(path)
         if data is None:
             raise ToolError(f"Pattern '{path.stem}' not found at {path}")
+        require_structured(data, path.stem)
 
         updates = {
             "bpm": bpm,
@@ -852,6 +888,7 @@ def _register_patterns(device: DeviceServer) -> None:
         data = read_json(path)
         if data is None:
             raise ToolError(f"Pattern '{path.stem}' not found at {path}")
+        require_structured(data, path.stem)
 
         triggers = data.get("track_triggers", [])
 
@@ -899,6 +936,7 @@ def _register_patterns(device: DeviceServer) -> None:
         data = read_json(path)
         if data is None:
             raise ToolError(f"Pattern '{path.stem}' not found at {path}")
+        require_structured(data, path.stem)
 
         channels = channels or [9, 10, 11, 12]
         midi_channels = data.get("midi_channels", {})
@@ -927,6 +965,160 @@ def _register_patterns(device: DeviceServer) -> None:
         write_json(path, data)
 
         return f"Set chord {chord_notes} at bar {bar} in pattern '{path.stem}'"
+
+
+# ============================================================================
+# PATTERN LANGUAGE
+# ============================================================================
+
+
+def _register_pattern_language(device: DeviceServer) -> None:
+    storage = device.storage
+
+    def parse(text: str) -> pattern_language.Pattern:
+        try:
+            return pattern_language.parse_pattern(text, device.spec)
+        except pattern_language.NotationError as exc:
+            raise ToolError(str(exc)) from None
+
+    def text_pattern(name: str) -> pattern_language.Pattern | None:
+        path = storage.pattern_path(name)
+        data = read_json(path)
+        if data is None or data.get("format") != "text":
+            return None
+        try:
+            return pattern_language.parse_pattern(data.get("text", ""), device.spec)
+        except pattern_language.NotationError as exc:
+            raise ToolError(f"Saved pattern '{path.stem}' is invalid:\n{exc}") from None
+
+    def expand(arrangement: str, bpm: int | None = None) -> list[pattern_language.Section]:
+        try:
+            return pattern_language.expand_arrangement(arrangement, text_pattern, bpm)
+        except pattern_language.NotationError as exc:
+            raise ToolError(str(exc)) from None
+
+    @device.tool(READS)
+    def check_pattern(
+        text: Annotated[str, Field(description="Pattern notation.")],
+    ) -> str:
+        """Validate and normalize strict step notation."""
+        return pattern_language.render_pattern(parse(text))
+
+    @device.tool(WRITES)
+    def save_pattern_text(
+        pattern_name: Annotated[str, Field(description="Name to save under.")],
+        text: Annotated[str, Field(description="Strict step notation.")],
+    ) -> str:
+        """Save a validated text pattern."""
+        path = storage.pattern_path(pattern_name)
+        if storage.song_path(pattern_name).exists():
+            raise ToolError(f"'{path.stem}' is already a song; use another name")
+        parsed = parse(text)
+        write_json(
+            path,
+            {
+                "format": "text",
+                "name": path.stem,
+                "text": text,
+            },
+        )
+        device.events.publish("pattern_saved", name=path.stem, pattern=pattern_language.pattern_to_dict(parsed))
+        return f"Saved text pattern '{path.stem}'\n{pattern_language.render_pattern(parsed)}"
+
+    @device.tool(WRITES)
+    def save_song(
+        song_name: Annotated[str, Field(description="Name to save under.")],
+        arrangement: Annotated[str, Field(description="'intro x2, verse+bass x4, outro'")],
+        bpm: Annotated[int, Field(ge=0, le=300, description="Override tempo; 0 keeps pattern tempos.")] = 0,
+    ) -> str:
+        """Save a text-pattern arrangement."""
+        path = storage.song_path(song_name)
+        if storage.pattern_path(song_name).exists():
+            raise ToolError(f"'{path.stem}' is already a pattern; use another name")
+        if 0 < bpm < 20:
+            raise ToolError("bpm must be 0 or a whole number from 20 to 300")
+        sections = expand(arrangement, bpm or None)
+        write_json(
+            path,
+            {
+                "name": path.stem,
+                "arrangement": arrangement,
+                "bpm": bpm or None,
+            },
+        )
+        device.events.publish("song_saved", name=path.stem, arrangement=arrangement)
+        return f"Saved song '{path.stem}': {arrangement} ({len(sections)} passes)"
+
+    @device.tool(READS)
+    def list_songs() -> str:
+        """List saved compact song arrangements."""
+        paths = sorted(storage.songs.glob("*.json"))
+        if not paths:
+            return f"No songs found in {storage.songs}"
+        lines = [f"Available songs ({len(paths)}):"]
+        for path in paths:
+            data = read_json(path) or {}
+            lines.append(f"- {data.get('name', path.stem)}: {data.get('arrangement', '')}")
+        return "\n".join(lines)
+
+    @device.tool(WRITES)
+    def delete_song(
+        song_name: Annotated[str, Field(description="Saved song to delete.")],
+    ) -> str:
+        """Delete a saved compact song arrangement."""
+        path = storage.song_path(song_name)
+        if not path.exists():
+            raise ToolError(f"Song '{path.stem}' not found at {path}")
+        path.unlink()
+        device.events.publish("song_deleted", name=path.stem)
+        return f"Deleted song '{path.stem}'"
+
+    @device.tool(PLAYS)
+    def play_pattern_text(
+        what: Annotated[str, Field(description="Pattern text, saved name, or arrangement.")],
+        loop: Annotated[bool, Field(description="Loop; later play calls switch at loop end.")] = False,
+    ) -> str:
+        """Play text notation, switching loops without a gap."""
+        device.connection.require_output()
+        source = what.strip()
+        if ":" in source or source.startswith("@"):
+            parsed = parse(source)
+            sections = [pattern_language.layer([("inline", parsed)])]
+            label = "inline pattern"
+        else:
+            saved_pattern = text_pattern(source)
+            if saved_pattern is not None:
+                sections = [pattern_language.layer([(source, saved_pattern)])]
+                label = source
+            else:
+                song_data = read_json(storage.song_path(source))
+                if song_data is not None:
+                    arrangement = song_data.get("arrangement", "")
+                    bpm = song_data.get("bpm")
+                    label = source
+                else:
+                    arrangement = source
+                    bpm = None
+                    label = source
+                sections = expand(arrangement, bpm)
+        patterns = {
+            name: pattern_language.pattern_to_dict(pattern)
+            for section in sections
+            for name, pattern in section.patterns
+        }
+        info = {
+            "sections": [
+                {"label": section.label, "bpm": section.bpm, "beats": float(section.length_beats)}
+                for section in sections
+            ],
+            "patterns": patterns,
+        }
+        return device.player.play(sections, loop=loop, label=label, info=info)
+
+    @device.tool(PLAYS)
+    def stop_pattern_playback() -> str:
+        """Stop background text-pattern playback and release sounding notes."""
+        return "Stopped pattern playback" if device.player.stop() else "No text pattern is playing"
 
 
 # ============================================================================
@@ -1196,6 +1388,11 @@ def _register_resources(device: DeviceServer) -> None:
         if spec.notes:
             lines += ["", spec.notes]
         return "\n".join(lines)
+
+    @device.mcp.resource(f"midi://{spec.slug}/live", mime_type="application/json")
+    def live_playback() -> str:
+        """Current text-pattern pass and recent event-bus history for visualizers."""
+        return json.dumps({"status": device.player.status, **device.events.snapshot()}, indent=2)
 
     @device.mcp.resource(f"midi://{spec.slug}/parameters", mime_type="application/json")
     def device_parameters() -> str:

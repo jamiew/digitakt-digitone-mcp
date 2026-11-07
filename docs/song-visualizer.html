@@ -186,7 +186,7 @@
   <button class="tab" role="tab" data-view="arrangement" aria-selected="true">Arrangement preview</button>
   <button class="tab" role="tab" data-view="pattern" aria-selected="false">Pattern bank</button>
   <button class="tab" role="tab" data-view="proposed" aria-selected="false">Song Mode plan</button>
-  <button class="tab" role="tab" data-view="live" aria-selected="false">Live design</button>
+  <button class="tab" role="tab" data-view="live" aria-selected="false">Pattern + live</button>
   <button class="tab" role="tab" data-view="tricks" aria-selected="false">Sequencing tricks</button>
 </div></div>
 <div class="layout">
@@ -225,28 +225,32 @@
   </section>
 
   <section class="view" id="view-live" hidden>
-    <div class="hero"><div><h2>Live visualizer design</h2><p>A truthful live view combines transport events with cached pattern dumps. It does not claim to mirror the Digitakt OLED.</p></div><span class="pill">implementation plan</span></div>
+    <div class="hero"><div><h2>Write the groove, then swap it live</h2><p>The MCP now accepts KO-II-style text patterns, compact songs, and queued pattern changes. A read-only resource exposes the same events to visualizers.</p></div><span class="pill">implemented in MCP</span></div>
     <div class="stats">
-      <div class="stat"><div class="label">Fast stream</div><div class="value">MIDI events</div><div class="sub">clock, transport, notes, CC, program</div></div>
-      <div class="stat"><div class="label">Slow state</div><div class="value">Pattern cache</div><div class="sub">pull on stop, change, or request</div></div>
-      <div class="stat"><div class="label">Browser link</div><div class="value">WebSocket</div><div class="sub">local, read-only by default</div></div>
-      <div class="stat"><div class="label">Optional adapter</div><div class="value">Overbridge</div><div class="sub">private active pattern/song fields</div></div>
+      <div class="stat"><div class="label">Strict notation</div><div class="value">x X o 1–9</div><div class="sub">hits, accents, ghosts, velocity</div></div>
+      <div class="stat"><div class="label">Song syntax</div><div class="value">name x4</div><div class="sub">+ layers patterns</div></div>
+      <div class="stat"><div class="label">Pattern switch</div><div class="value">Loop boundary</div><div class="sub">never cuts a pass short</div></div>
+      <div class="stat"><div class="label">Live state</div><div class="value">MCP resource</div><div class="sub">current pass + recent events</div></div>
     </div>
     <div class="tricks">
-      <article class="trick"><h3>1 · Observe</h3><p>Capture MIDI Start, Stop, Continue, Clock, Song Position, Program Change, notes, and CC. Summarize high-rate clock traffic instead of returning every message.</p><pre>Digitakt MIDI
-  ├─ transport → live position
-  ├─ program   → active pattern
-  └─ notes/CC  → activity + automation</pre></article>
-      <article class="trick"><h3>2 · Cache</h3><p>Pull the 31 KB pattern-plus-kit dump only at stable boundaries. Polling a full dump on every tick would waste bandwidth and disturb timing.</p><pre>on connect       pull selected pattern
-on pattern change mark cache stale
-on stop/manual   refresh stale pattern</pre></article>
-      <article class="trick"><h3>3 · Render</h3><p>Merge the event stream and cache into the horizontal lanes already used here. Show observed state, cached state, and inferred state with separate labels.</p><pre>event stream + pattern cache
-            ↓
-bar / step / track activity
-conditions / locks / song rows</pre></article>
-      <article class="trick"><h3>4 · Control safely</h3><p>Opening the view must not write. Put pattern edits, CC moves, and transport controls behind explicit actions with readback and undo data.</p><pre>VIEW  read-only by default
-EDIT  preview diff → apply → read back
-UNDO  restore captured pattern dump</pre></article>
+      <article class="trick"><h3>1 · Write one pattern</h3><p>Every character has one meaning. Bad input reports its exact line and column instead of guessing.</p><pre>@bpm 96
+@swing 58
+kick:  x... x... x... x...
+snare: .... x... .... x...
+hat:   x.x. x.x. x.x. x.x.</pre></article>
+      <article class="trick"><h3>2 · Compose the song</h3><p>Names refer to saved patterns. Repeats and layers stay compact enough to read in one glance.</p><pre>intro x2,
+verse+bass x4,
+breakdown x2,
+drop x4,
+outro</pre></article>
+      <article class="trick"><h3>3 · Iterate without a glitch</h3><p>Play a new pattern while another loops. The current pass finishes, active notes release, and the queued pattern starts on the next boundary.</p><pre>current loop  ━━━━━━━━━│
+queued next             └━━━━━━━━
+                       exact boundary</pre></article>
+      <article class="trick"><h3>4 · Render real events</h3><p>The internal event bus records passes, queues, saves, and stops. Each pass carries its patterns and start time, so a client can draw the playhead by polling without touching playback.</p><pre>midi://digitakt/live
+
+status       'verse+bass' looping (pass 3)
+current_pass verse+bass · pass 3
+recent       pass · queued · song_saved</pre></article>
     </div>
   </section>
 

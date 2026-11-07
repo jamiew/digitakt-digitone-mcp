@@ -225,6 +225,7 @@ SPEC = DeviceSpec(
     port_name="Elektron Digitone",
     track_count=TRACK_COUNT,
     trigger_notes=False,
+    pattern_aliases={"keys": "ch1", "bass": "ch2", "lead": "ch3", "texture": "ch4"},
     parameters=parse_parameters(PARAMETER_MAP),
     categories=get_parameters_by_category(),
     nrpn_name_lookup=get_param_name,
