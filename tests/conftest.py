@@ -6,6 +6,8 @@ handling as well as the message bytes. The only stand-in is the port itself —
 there's no way to assert on MIDI output without one.
 """
 
+from collections.abc import Iterator
+
 import mido
 import pytest
 from mcp.client import Client
@@ -93,17 +95,24 @@ def build(spec, tmp_path) -> Harness:
     return Harness(device, port)
 
 
+def _serve(spec, tmp_path) -> Iterator[Harness]:
+    harness = build(spec, tmp_path)
+    yield harness
+    # A failed assertion can leave the background pattern player running into the next test.
+    harness.device.player.stop()
+
+
 @pytest.fixture(params=sorted(SPECS), ids=sorted(SPECS))
-def any_device(request, tmp_path) -> Harness:
+def any_device(request, tmp_path) -> Iterator[Harness]:
     """Runs a test once per device, for behaviour the shared core provides to all."""
-    return build(SPECS[request.param], tmp_path)
+    yield from _serve(SPECS[request.param], tmp_path)
 
 
 @pytest.fixture
-def digitakt(tmp_path) -> Harness:
-    return build(DIGITAKT_SPEC, tmp_path)
+def digitakt(tmp_path) -> Iterator[Harness]:
+    yield from _serve(DIGITAKT_SPEC, tmp_path)
 
 
 @pytest.fixture
-def digitone(tmp_path) -> Harness:
-    return build(DIGITONE_SPEC, tmp_path)
+def digitone(tmp_path) -> Iterator[Harness]:
+    yield from _serve(DIGITONE_SPEC, tmp_path)

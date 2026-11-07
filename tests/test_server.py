@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import time
+from importlib.metadata import version
 
 import mido
 import pytest
@@ -272,6 +274,14 @@ def _track_hit(device, track: int) -> tuple[int, int]:
     return (0, track - 1) if device.spec.trigger_notes else (track - 1, 60)
 
 
+async def _until(condition, timeout: float = 3.0) -> None:
+    """Wait for background playback to reach a state, instead of guessing a sleep."""
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "timed out waiting for playback"
+        await asyncio.sleep(0.01)
+
+
 class TestPatternLanguage:
     async def test_text_pattern_and_song_round_trip(self, any_device):
         first = "@bpm 300\n@grid 1/32\nt1: x"
@@ -293,7 +303,7 @@ class TestPatternLanguage:
         assert first in await any_device.call("load_pattern", pattern_name="intro")
 
         await any_device.call("play_pattern_text", what="track")
-        await asyncio.sleep(0.15)
+        await _until(lambda: any_device.device.player.status is None)
 
         notes = any_device.port.of_type("note_on")
         assert [(message.channel, message.note) for message in notes] == [
@@ -303,13 +313,13 @@ class TestPatternLanguage:
         ]
 
     async def test_loop_switches_at_boundary_and_publishes_live_state(self, any_device):
-        current = "@bpm 300\n@grid 1/32\nt1: x..."
+        # A 0.8s pass, so the queue call lands well inside it.
+        current = "@bpm 300\n@grid 1/4\nt1: x..."
         next_pattern = "@bpm 300\n@grid 1/32\nt2: x..."
         await any_device.call("save_pattern_text", pattern_name="current", text=current)
         await any_device.call("save_pattern_text", pattern_name="next", text=next_pattern)
 
         assert "on loop" in await any_device.call("play_pattern_text", what="current", loop=True)
-        await asyncio.sleep(0.02)
         queued = await any_device.call("play_pattern_text", what="next", loop=True)
         live = json.loads(await any_device.read(f"midi://{any_device.device.spec.slug}/live"))
 
@@ -317,9 +327,11 @@ class TestPatternLanguage:
         assert live["current_pass"]["label"] == "current"
         assert any(event["type"] == "queued" and event["label"] == "next" for event in live["recent"])
 
-        await asyncio.sleep(0.15)
-        sent = [(message.channel, message.note) for message in any_device.port.of_type("note_on")]
-        assert _track_hit(any_device.device, 2) in sent
+        def sent():
+            return [(message.channel, message.note) for message in any_device.port.of_type("note_on")]
+
+        await _until(lambda: _track_hit(any_device.device, 2) in sent())
+        assert sent()[0] == _track_hit(any_device.device, 1)
         assert await any_device.call("stop_pattern_playback") == "Stopped pattern playback"
         stopped = json.loads(await any_device.read(f"midi://{any_device.device.spec.slug}/live"))
         assert stopped["current_pass"] is None
@@ -336,17 +348,14 @@ class TestPatternLanguage:
 
 
 class TestExport:
-    async def test_export_pattern_writes_a_midi_file(self, any_device):
-        await any_device.call(
-            "export_pattern_to_midi",
-            filename="out",
-            bpm=120,
-            bars=1,
-            track_triggers=[[0, 1, 100]],
-            melody_notes=[[0, 60, 100, 0.5]],
-        )
-
-        assert any_device.device.storage.recording_path("out").exists()
+    async def test_export_explains_out_of_range_rows(self, any_device):
+        """mido raised ValueError here, which mcp 2.x hid behind a bare "Error executing tool"."""
+        with pytest.raises(ToolError, match="Can't export"):
+            await any_device.call("export_pattern_to_midi", filename="out", track_triggers=[[0, 0, 100]])
+        with pytest.raises(ToolError, match="Can't export"):
+            await any_device.call(
+                "export_automation_to_midi", filename="auto", automation={"parameter_automation": {"filter_cutoff": 5}}
+            )
 
     async def test_simultaneous_notes_export_at_the_right_times(self, any_device):
         """Rows were written one after another, so a chord or two hits on one beat gave a
@@ -450,3 +459,23 @@ class TestSchema:
         with pytest.raises(ToolError):
             await any_device.call("send_cc", cc_number=74, value=128)
         assert any_device.port.messages == []
+
+    async def test_every_tool_declares_its_hints(self, any_device):
+        """Clients use these to decide what needs confirmation; mcp defaults would claim destructive."""
+        for tool in await any_device.tools():
+            hints = tool.annotations
+            assert hints is not None and hints.read_only_hint is not None, tool.name
+            assert hints.open_world_hint is not None, tool.name
+            if not hints.read_only_hint:
+                assert hints.destructive_hint is not None and hints.idempotent_hint is not None, tool.name
+
+    async def test_tool_schemas_stay_inside_the_token_budget(self, any_device):
+        """About 4 characters per token, counted the way the docs report it. Budget: 7.5k per server."""
+        tools = await any_device.tools()
+        chars = sum(len(t.name) + len(t.description or "") + len(json.dumps(t.input_schema)) for t in tools)
+        assert chars / 4 < 7500
+
+    async def test_server_reports_its_version_and_instructions(self, any_device):
+        async with Client(any_device.device.mcp) as client:
+            assert client.server_info.version == version("digitakt-digitone-mcp")
+            assert f"midi://{any_device.device.spec.slug}/parameters" in (client.instructions or "")

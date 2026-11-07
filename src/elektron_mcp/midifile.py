@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import mido
@@ -19,7 +19,9 @@ def _append_notes(
     ticks_per_beat: int,
     default_duration: float,
 ) -> int:
-    """Append [beat, note, velocity, duration] rows as note on/off pairs.
+    """Append [beat, note, velocity, duration, channel] rows as note on/off pairs.
+
+    Velocity and duration are optional, and a row without a channel uses `channel`.
 
     Notes can overlap (chords, drum hits on the same beat), so every on and off is
     placed at its absolute tick first and only then turned into delta times.
@@ -32,14 +34,15 @@ def _append_notes(
         beat, note = row[0], int(row[1])
         velocity = int(row[2]) if len(row) > 2 else 100
         duration = float(row[3]) if len(row) > 3 else default_duration
+        row_channel = int(row[4]) if len(row) > 4 else channel
 
         tick = max(0, int(beat * ticks_per_beat))
         # Seconds -> ticks: duration * (beats per second) * ticks per beat. At least one
         # tick, or the off would sort before its own on.
         duration_ticks = max(1, int(duration * ticks_per_beat * bpm / 60))
 
-        timed.append((tick, 1, mido.Message("note_on", channel=channel, note=note, velocity=velocity)))
-        timed.append((tick + duration_ticks, 0, mido.Message("note_off", channel=channel, note=note, velocity=0)))
+        timed.append((tick, 1, mido.Message("note_on", channel=row_channel, note=note, velocity=velocity)))
+        timed.append((tick + duration_ticks, 0, mido.Message("note_off", channel=row_channel, note=note, velocity=0)))
 
     timed.sort(key=lambda entry: entry[:2])
 
@@ -89,11 +92,15 @@ def write_pattern(
     *,
     bpm: float,
     track_triggers: Sequence[Sequence[float]],
+    trigger_hit: Callable[[int], tuple[int, int]],
     melody_notes: Sequence[Sequence[float]],
     melody_channel: int = 1,
     drum_track_name: str = "Drums",
 ) -> None:
-    """Write a two-track MIDI file: drum triggers plus a melody."""
+    """Write a two-track MIDI file: track triggers plus a melody.
+
+    `trigger_hit(track)` gives the zero-based channel and note that fire a track.
+    """
     midi = mido.MidiFile(ticks_per_beat=TICKS_PER_BEAT)
 
     tempo_track = mido.MidiTrack()
@@ -105,11 +112,11 @@ def write_pattern(
         drum_track = mido.MidiTrack()
         midi.tracks.append(drum_track)
         drum_track.append(mido.MetaMessage("track_name", name=drum_track_name))
-        # A trigger row is [beat, track, velocity, note?]; tracks map to notes 0-N.
-        rows = [
-            [row[0], row[3] if len(row) > 3 else int(row[1]) - 1, row[2] if len(row) > 2 else 100, 0.1]
-            for row in track_triggers
-        ]
+        # A trigger row is [beat, track, velocity, note?]; a given note replaces the track's trigger note.
+        rows = []
+        for row in track_triggers:
+            channel, note = trigger_hit(int(row[1]))
+            rows.append([row[0], row[3] if len(row) > 3 else note, row[2] if len(row) > 2 else 100, 0.1, channel])
         _append_notes(drum_track, rows, bpm=bpm, channel=0, ticks_per_beat=midi.ticks_per_beat, default_duration=0.1)
 
     if melody_notes:
@@ -137,7 +144,7 @@ def write_automation(path: Path, *, bpm: float, events: Sequence[tuple[float, in
 
     last_tick = 0
     for beat, control, value in sorted(events, key=lambda e: e[0]):
-        tick = int(beat * midi.ticks_per_beat)
+        tick = max(0, int(beat * midi.ticks_per_beat))
         track.append(
             mido.Message("control_change", control=control, value=value, channel=channel, time=tick - last_tick)
         )

@@ -79,17 +79,6 @@ class MidiConnection:
         except Exception as exc:
             self.logger.error(f"Error connecting to MIDI: {exc}")
 
-    def close(self) -> None:
-        for port in (self.output_port, self.input_port):
-            if port is not None:
-                port.close()
-        self.output_port = None
-        self.input_port = None
-
-    @property
-    def is_connected(self) -> bool:
-        return self.output_port is not None
-
     def require_output(self) -> mido.ports.BaseOutput:
         if self.output_port is None:
             raise NotConnectedError(
@@ -122,22 +111,18 @@ class MidiConnection:
     def cc(self, control: int, value: int, channel: int) -> None:
         self.send(mido.Message("control_change", control=control, value=value, channel=channel))
 
-    def nrpn(self, msb: int, lsb: int, value: int, channel: int, data_lsb: int = 0) -> None:
-        """Send a 4-message NRPN. `data_lsb` carries the low 7 bits of 14-bit values."""
+    def nrpn(self, msb: int, lsb: int, value: int, channel: int) -> None:
+        """Send a 4-message NRPN with a 7-bit value; the data entry LSB is 0."""
         with self._lock:
             self.cc(CC_NRPN_MSB, msb, channel)
             self.cc(CC_NRPN_LSB, lsb, channel)
             self.cc(CC_DATA_ENTRY_MSB, value, channel)
-            self.cc(CC_DATA_ENTRY_LSB, data_lsb, channel)
-
-    def nrpn_14bit(self, msb: int, lsb: int, value: int, channel: int) -> None:
-        """Send a 14-bit NRPN value (0-16383), split across data entry MSB/LSB."""
-        self.nrpn(msb, lsb, (value >> 7) & 0x7F, channel, data_lsb=value & 0x7F)
+            self.cc(CC_DATA_ENTRY_LSB, 0, channel)
 
     async def note_off_after(self, note: int, duration: float, channel: int) -> None:
         await asyncio.sleep(duration)
         if self.output_port is not None:
-            self.send(mido.Message("note_off", note=note, velocity=0, channel=channel))
+            self.note_off(note, channel)
 
     # ----------------------------------------------------------------- logging
 

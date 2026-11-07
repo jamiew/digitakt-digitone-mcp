@@ -150,9 +150,8 @@ def register_tools(device: DeviceServer) -> None:
         channel: TrackChannel = 1,
     ) -> str:
         """Shape how an operator's modulation depth changes over time."""
-        name = operator
         ch = channel - 1
-        if name == "A":
+        if operator == "A":
             ccs = (Syn2CC.A_ENV_ATTACK, Syn2CC.A_ENV_DECAY, Syn2CC.A_ENV_END, Syn2CC.A_LEVEL)
         else:
             ccs = (Syn2CC.B_ENV_ATTACK, Syn2CC.B_ENV_DECAY, Syn2CC.B_ENV_END, Syn2CC.B_LEVEL)
@@ -162,12 +161,12 @@ def register_tools(device: DeviceServer) -> None:
             if value is None:
                 continue
             connection.cc(cc, value, ch)
-            connection.log_cc(cc, value, ch, f"Op {name} {label}")
+            connection.log_cc(cc, value, ch, f"Op {operator} {label}")
             applied.append(f"{label}={value}")
 
         if not applied:
             return "No envelope parameters specified"
-        return f"Set operator {name} envelope: {', '.join(applied)} on channel {channel}"
+        return f"Set operator {operator} envelope: {', '.join(applied)} on channel {channel}"
 
     @device.tool(SETS)
     def set_chorus(
@@ -206,16 +205,16 @@ def register_tools(device: DeviceServer) -> None:
     def new_sounds(
         style: Annotated[str, Field(description="Genre or feel, e.g. 'dub techno', 'lo-fi house'.")] = "",
     ) -> str:
-        """Build four fresh FM patches: texture, keys, bass and lead on tracks 1-4, then audition them."""
+        """Build four fresh FM patches: keys, bass, lead and texture on tracks 1-4, then audition them."""
         feel = f" for {style}" if style else ""
         return (
             f"Make four new Digitone sounds{feel}, one per track, with randomized values inside these ranges "
-            "(raw 0-127). Track 1 texture/pad: algorithm 5-8, amp_attack 90+, amp_release 100+, some chorus_send, "
-            "a slow deep LFO. Track 2 keys: algorithm 1-2, short op_a_decay, medium amp_decay, harmonic ratios. "
-            "Track 3 bass: algorithm 1, low fm_ratio values, high-ish op_b_level with short op_b_decay, "
-            "filter_cutoff 40-60. Track 4 lead: algorithm 2-4, a little fm_feedback, medium amp_attack, "
-            "some delay_send. Play a short phrase on each track after setting it, then tell me what you set so "
-            "I can keep or redo each one. If I'd rather start from saved sounds, list_sounds shows the pool."
+            "(raw 0-127). Track 1 keys: algorithm 1-2, short op_a_decay, medium amp_decay, harmonic ratios. "
+            "Track 2 bass: algorithm 1, low fm_ratio_c and fm_ratio_a, high-ish op_b_level with short op_b_decay, "
+            "filter_cutoff 40-60. Track 3 lead: algorithm 2-4, a little fm_feedback, medium amp_attack, "
+            "some delay_send. Track 4 texture/pad: algorithm 5-8, amp_attack 90+, amp_release 100+, some "
+            "chorus_send, a slow deep LFO. Play a short phrase on each track after setting it, then tell me what "
+            "you set so I can keep or redo each one. If I'd rather start from saved sounds, list_sounds shows the pool."
         )
 
 

@@ -6,7 +6,7 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
 ## Quick Reference
 
 - **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
-- **Tests**: `uv run pytest` (133 tests, no hardware needed)
+- **Tests**: `uv run pytest` (142 tests, no hardware needed)
 - **Checks**: `uv run ruff check . && uv run ruff format --check . && uv run ty check`
 - **Live harness**: `uv run python -m harness <digitakt|digitone> [chat|test|call]`, `--dry-run` for no hardware
 - **Hardware scripts**: `scripts/hardware/` — manual, need a real device, not collected by pytest
@@ -46,7 +46,8 @@ models) via MIDI. One package, one shared server core, one `DeviceSpec` per devi
   A bare string in `Annotated[int, "text"]` is silently dropped from the schema. Reuse the
   aliases in `server.py` (`Channel`, `Velocity`, `Row`, ...). Type list items: OpenAI
   rejects untyped arrays. `tests/test_server.py::TestSchema` enforces both.
-- **Every tool picks an annotation preset** (`PLAYS`, `SETS`, `LISTENS`, `READS`, `WRITES`).
+- **Every tool picks an annotation preset** (`PLAYS`, `SETS`, `LISTENS`, `READS`, `WRITES`,
+  or `LOADS`/`UPLOADS` in `drive.py`). `TestSchema` checks every hint is explicit.
 - Sync tools run on worker threads in mcp 2.x; `MidiConnection` locks around sends and NRPNs.
 
 ## Digitakt MIDI Basics
@@ -96,11 +97,11 @@ All user data in `~/.mcp-config/digitakt/`:
 
 ## Token Budget
 
-Model-facing tool schemas (name + description + input schema) are ~7.3k tokens for the
-Digitakt and ~6.6k for the Digitone
-by a chars/4 estimate, now that parameter descriptions actually reach the schema. Keep
-under ~7.5k. `ElektronMCPServer.list_tools` strips pydantic's auto titles (~1k tokens).
-When compressing docstrings, aim for <100 tokens per tool.
+Model-facing tool schemas (name + description + `json.dumps` of the input schema, at
+chars/4) are ~7.3k tokens for the Digitakt and ~6.6k for the Digitone. Keep under ~7.5k;
+`TestSchema::test_tool_schemas_stay_inside_the_token_budget` enforces it.
+`ElektronMCPServer.list_tools` strips pydantic's auto titles (~1k tokens). When compressing
+docstrings, aim for <100 tokens per tool.
 
 ---
 

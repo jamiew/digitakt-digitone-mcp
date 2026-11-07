@@ -11,6 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from elektron_mcp.devices import DEVICES
+from elektron_mcp.pattern_language import NOTE_ON, compile_pattern, parse_pattern
 from harness.providers import ToolOutcome
 
 Check = Callable[[Any], bool]
@@ -83,6 +85,17 @@ def pitch_classes(*classes: int) -> Check:
     return lambda notes: {int(n) % 12 for n in notes} == set(classes)
 
 
+def plays_text(device: str, bpm: int, hits: set[tuple[float, int, int]]) -> Check:
+    """An inline text pattern: one bar at `bpm` whose note-ons are exactly (beat, channel - 1, note)."""
+
+    def check(text: str) -> bool:
+        pattern = parse_pattern(text, DEVICES[device])
+        played = {(float(e.beat), e.channel, e.note) for e in compile_pattern(pattern) if e.kind == NOTE_ON}
+        return pattern.bpm == bpm and pattern.length_beats == 4 and played == hits
+
+    return check
+
+
 # ----------------------------------------------------------------- shared
 
 UNKNOWN_PARAMETER = Scenario(
@@ -131,6 +144,10 @@ DIGITAKT = [
                 Expect(
                     "play_pattern_with_multi_channel_midi",
                     {"bars": 1, "track_triggers": triggers_on(1, {0, 1, 2, 3})},
+                ),
+                Expect(
+                    "play_pattern_text",
+                    {"what": plays_text("digitakt", 120, {(b, 0, 0) for b in range(4)}), "loop": False},
                 ),
             )
         ],
@@ -181,7 +198,18 @@ DIGITONE = [
     Scenario(
         "arpeggio",
         "Play one bar at 100 BPM on track 1: C4, E4, G4, C5 as quarter notes.",
-        [any_of(Expect("play_pattern_with_melody", {"bars": 1, "channel": 1, "notes": pitches(60, 64, 67, 72)}))],
+        [
+            any_of(
+                Expect("play_pattern_with_melody", {"bars": 1, "channel": 1, "notes": pitches(60, 64, 67, 72)}),
+                Expect(
+                    "play_pattern_text",
+                    {
+                        "what": plays_text("digitone", 100, {(0, 0, 60), (1, 0, 64), (2, 0, 67), (3, 0, 72)}),
+                        "loop": False,
+                    },
+                ),
+            )
+        ],
     ),
     Scenario(
         "chorus",
