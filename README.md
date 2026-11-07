@@ -432,6 +432,8 @@ Tests drive the real MCP surface (an in-process `mcp.client.Client`) against a r
 MIDI port, so tool registration, schema validation and error text are covered along with
 the emitted bytes. A test also keeps each server's tool schemas under 7.5k tokens. The
 module layout is in [PLAN.md](PLAN.md#architecture).
+`.mcp.json` is the headless dev entry (works from any cwd, no device needed);
+`tests/test_mcp_json.py` launches each server from it over stdio in both protocol eras.
 
 `scripts/hardware/` holds manual scripts that need a real device attached; they are not
 part of the test suite.
