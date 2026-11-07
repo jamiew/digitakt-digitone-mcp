@@ -7,7 +7,7 @@ FastMCP server from a `DeviceSpec`; each device ships its own console script so 
 cost stays per-device. Digitakt and Digitone are supported; both are on the original
 hardware, not the mk2 machines.
 
-Green: `ruff check`, `ruff format --check`, `ty check`, 142 tests, wheel builds and
+Green: `ruff check`, `ruff format --check`, `ty check`, 144 tests, wheel builds and
 imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-07-28.
 
 | | |
@@ -15,7 +15,7 @@ imports from an isolated install. Runs on mcp 2.3 (`MCPServer`), protocol 2026-0
 | Devices | Digitakt (57 tools, ~7.3k tokens), Digitone (50 tools, ~6.6k tokens) |
 | Entry points | `digitakt-mcp`, `digitone-mcp`, both in `.mcp.json` |
 | Python | 3.11–3.14 |
-| Tests | 142, no hardware required; plus `harness/` for live LLM runs |
+| Tests | 144, no hardware required; plus `harness/` for live LLM runs |
 
 ## Architecture
 
@@ -118,6 +118,10 @@ every later event in `clock.play`.
   `ValueError`, which reached the model as "Error executing tool". They are `ToolError`s now.
 - **`new_sounds` built texture on track 1**, while the text-pattern aliases put `keys` on
   track 1 and `texture` on track 4. The prompt now follows the aliases.
+- **A queued text pattern ignored `loop=False`.** Playing a pattern while another looped
+  forced the new one to loop too. It now plays once after the current loop, then stops.
+- **`record_midi_input` claimed a closed world.** It listens to the device, so its hints
+  now say open world, like `monitor_midi_input`.
 
 ### Inherited Digitakt II code, removed
 

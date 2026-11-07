@@ -1297,7 +1297,8 @@ def _register_recording(device: DeviceServer) -> None:
             result.append(f"{omitted} additional non-realtime events omitted.")
         return "\n".join(result)
 
-    @device.tool(WRITES)
+    # Writes a local file from what the device sends, so it reaches the hardware like LISTENS.
+    @device.tool(WRITES.model_copy(update={"open_world_hint": True}))
     async def record_midi_input(
         filename: Annotated[str, Field(description="Output filename; .mid is added if missing.")],
         duration_sec: Annotated[float, Field(gt=0, le=600, description="Recording length in seconds.")] = 30,
