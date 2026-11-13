@@ -172,7 +172,7 @@ def write_recording(path: Path, *, bpm: float, messages: Sequence[tuple[float, m
     current_tick = 0
 
     for elapsed, message in messages:
-        if message.type not in ("note_on", "note_off", "control_change"):  # ty: ignore[unresolved-attribute]
+        if message.type not in ("note_on", "note_off", "control_change"):  # ty: ignore[missing-attribute]
             continue
         tick = int(elapsed * ticks_per_second)
         track.append(message.copy(time=tick - current_tick))
