@@ -60,17 +60,17 @@ class MidiConnection:
         the server still starts and tools can report a useful error.
         """
         try:
-            for name in mido.get_output_names():  # ty: ignore[unresolved-attribute]
+            for name in mido.get_output_names():  # ty: ignore[missing-attribute]
                 if self.port_name in name:
-                    self.output_port = mido.open_output(name)  # ty: ignore[unresolved-attribute]
+                    self.output_port = mido.open_output(name)  # ty: ignore[missing-attribute]
                     self.logger.info(f"Connected to MIDI output: {name}")
                     break
             else:
                 self.logger.warning(f"Could not find MIDI output port for {self.port_name}")
 
-            for name in mido.get_input_names():  # ty: ignore[unresolved-attribute]
+            for name in mido.get_input_names():  # ty: ignore[missing-attribute]
                 if self.port_name in name:
-                    self.input_port = mido.open_input(name)  # ty: ignore[unresolved-attribute]
+                    self.input_port = mido.open_input(name)  # ty: ignore[missing-attribute]
                     self.logger.info(f"Connected to MIDI input: {name}")
                     break
             else:
@@ -148,6 +148,6 @@ class MidiConnection:
 
 
 def available_ports() -> dict[str, list[str]]:
-    inputs = mido.get_input_names()  # ty: ignore[unresolved-attribute]
-    outputs = mido.get_output_names()  # ty: ignore[unresolved-attribute]
+    inputs = mido.get_input_names()  # ty: ignore[missing-attribute]
+    outputs = mido.get_output_names()  # ty: ignore[missing-attribute]
     return {"inputs": list(inputs), "outputs": list(outputs)}
