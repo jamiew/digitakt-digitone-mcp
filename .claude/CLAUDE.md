@@ -3,6 +3,15 @@
 MCP servers for controlling Elektron Digitakt and Digitone (both **original**, not the II
 models) via MIDI. One package, one shared server core, one `DeviceSpec` per device.
 
+## Public repository privacy
+
+This repository is public. Do not commit private, personal, or person-specific operational data.
+
+- Keep session notes, music or arrangement notes, hardware mappings, local paths, hostnames, IP addresses, account data, project dumps, recordings, and unpublished media outside this repository.
+- Use generic examples and placeholders in documentation, fixtures, tests, and prompts.
+- Check new files and staged changes for personal data and secrets before committing. Run `gitleaks git .` when sensitive material may have entered history.
+- Put useful person-specific material in a private or self-hosted repository instead. If repository visibility or data sensitivity is unclear, stop and ask.
+
 ## Quick Reference
 
 - **Entry points**: `uv run digitakt-mcp`, `uv run digitone-mcp` (also wired up in `.mcp.json`)
@@ -104,6 +113,3 @@ chars/4) are ~7.3k tokens for the Digitakt and ~6.6k for the Digitone. Keep unde
 `TestSchema::test_tool_schemas_stay_inside_the_token_budget` enforces it.
 `ElektronMCPServer.list_tools` strips pydantic's auto titles (~1k tokens). When compressing
 docstrings, aim for <100 tokens per tool.
-
----
-

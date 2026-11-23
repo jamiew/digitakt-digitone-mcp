@@ -335,7 +335,6 @@ Default channel 10. Sends to whichever track is currently active. Useful for "pl
 - Offset LFO start phase (SPH) across tracks to avoid unison pumping
 - Triangle LFO on Ratio A/B creates retro pitch warble without affecting carrier pitch
 
----
 
 ## References
 
