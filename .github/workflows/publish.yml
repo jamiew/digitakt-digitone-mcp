@@ -1,0 +1,85 @@
+name: Publish to PyPI & MCP Registry
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write
+  contents: read
+
+# Never run two publishes at once or cancel one midway.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+
+      # Matches CI: python-rtmidi needs the ALSA headers wherever it builds from source.
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - uses: astral-sh/setup-uv@v10.3.3
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Validate release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          uv run --locked python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          if not re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+              raise SystemExit("Release tag must have the form vMAJOR.MINOR.PATCH")
+          version = tag[1:]
+          project_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          if version != project_version:
+              raise SystemExit("Release tag does not match pyproject.toml version")
+          with open(os.environ["GITHUB_ENV"], "a") as env_file:
+              env_file.write(f"RELEASE_VERSION={version}\n")
+          PY
+
+      - name: Run tests
+        run: uv run --locked pytest
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.2
+
+      - name: Install mcp-publisher
+        env:
+          # From registry_1.8.21_checksums.txt in the v1.8.21 release.
+          MCP_PUBLISHER_VERSION: v1.8.21
+          MCP_PUBLISHER_SHA256: ca2e5b24e8fc2718be4bb58ab086b39b7d60c79840c24b2057bc3f36d6ab2a59
+        run: |
+          curl -fsSL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check --strict
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      # One PyPI package backs both listings; each passes its device to the command.
+      - name: Publish to MCP Registry
+        run: |
+          for file in server.digitakt.json server.digitone.json; do
+            jq --arg v "$RELEASE_VERSION" '.version = $v | .packages[0].version = $v' "$file" > server.tmp
+            mv server.tmp "$file"
+            ./mcp-publisher publish "$file"
+          done

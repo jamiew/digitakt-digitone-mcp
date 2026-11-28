@@ -1,9 +1,10 @@
 [project]
 name = "digitakt-digitone-mcp"
-version = "0.5.2"
+version = "0.6.0"
 description = "MCP servers for controlling Elektron Digitakt and Digitone over MIDI"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.11"
 authors = [{ name = "Jamie Dubs" }]
 keywords = ["mcp", "midi", "elektron", "digitakt", "digitone", "music"]
@@ -17,8 +18,8 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: MIDI",
 ]
 dependencies = [
-    "mido>=1.3.3",
-    "python-rtmidi>=1.5.8",
+    "mido>=1.3.3,<2",
+    "python-rtmidi>=1.5.8,<2",
     "mcp>=2.3.0,<3",
 ]
 
@@ -27,6 +28,7 @@ Homepage = "https://github.com/jamiew/digitakt-digitone-mcp"
 Issues = "https://github.com/jamiew/digitakt-digitone-mcp/issues"
 
 [project.scripts]
+digitakt-digitone-mcp = "elektron_mcp.cli:main"
 digitakt-mcp = "elektron_mcp.devices.digitakt:main"
 digitone-mcp = "elektron_mcp.devices.digitone:main"
 
@@ -36,6 +38,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/elektron_mcp"]
+
+# Keep notes, research, the harness and site assets out of the sdist.
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", ".mcp.json", "server.*.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]
 
 [dependency-groups]
 dev = [

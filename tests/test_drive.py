@@ -14,7 +14,7 @@ from elektron_mcp.kit import role_of
 SAMPLE_SLOT_CC = 19
 
 LD = """\
-0: id: SYSTEM_ID; name: m3max.local
+0: id: SYSTEM_ID; name: example-host.local
 1: id: Elektron Digitakt :: Elektron Digitakt; name: Elektron Digitakt :: Elektron Digitakt
 2: id: volca-sample; name: KORG Volca Sample
 """
@@ -186,6 +186,21 @@ class TestUpload:
 
         uploads = [c for c in cli.calls if c[0] == "elektron:sample:ul"]
         assert [(Path(c[1]).name, c[2]) for c in uploads] == [("drum loop 2bar 89bpm.wav", "1:/cipher/Demo")]
+
+    @pytest.mark.parametrize(
+        ("tool", "args"),
+        [("upload_samples", {"drive_folder": "/cipher"}), ("load_sample", {"track": 1})],
+    )
+    async def test_refuses_a_local_file_that_isnt_audio(self, digitakt, cli, tmp_path, tool, args):
+        """A model can be talked into naming any path; only audio leaves this computer."""
+        secret = tmp_path / "id_ed25519"
+        secret.write_text("not a sample")
+        key = "local_path" if tool == "upload_samples" else "sample"
+
+        with pytest.raises(ToolError, match="WAV or AIFF"):
+            await digitakt.call(tool, **args, **{key: str(secret)})
+
+        assert not [c for c in cli.calls if c[0] == "elektron:sample:ul"]
 
 
 class TestMissingElektroid:

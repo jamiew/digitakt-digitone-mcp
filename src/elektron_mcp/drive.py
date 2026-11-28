@@ -34,6 +34,12 @@ MAX_LISTED = 200
 Track = Annotated[int, Field(ge=1, le=8, description="Audio track (1-8).")]
 
 
+def require_audio(path: Path) -> None:
+    """Only audio leaves this computer, whatever path the model was given."""
+    if path.suffix.lower() not in AUDIO:
+        raise ToolError(f"{path.name} isn't a WAV or AIFF file.")
+
+
 def register_sound_tools(device: DeviceServer) -> None:
     """Sound pools exist on both machines."""
 
@@ -128,6 +134,7 @@ def register_sample_tools(device: DeviceServer) -> None:
                 raise ToolError(f"Slot {slot} is empty. Use list_sample_slots to see what's loaded.")
             path = match.path
         elif (local := Path(sample).expanduser()).is_file():
+            require_audio(local)
             slot = await upload_to_free_slot(local)
             path, note = str(local), " Uploaded it; elektroid keeps a copy in /incoming on the +Drive."
         elif sample.startswith("/"):
@@ -155,6 +162,7 @@ def register_sample_tools(device: DeviceServer) -> None:
         """Copy samples from this computer onto the +Drive (needs elektroid-cli). Doesn't load them onto tracks."""
         source = Path(local_path).expanduser()
         if source.is_file():
+            require_audio(source)
             files = [source]
             root = source.parent
         elif source.is_dir():

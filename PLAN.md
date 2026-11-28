@@ -213,7 +213,8 @@ a Digitakt II spec ever lands, where its expectations become correct).
       most one is right for the mk1; check on hardware.
 - [ ] **Run `python -m harness digitone test` on a Digitone.** The Digitone scenarios have
       only run in `--dry-run`.
-- [ ] **Publish to PyPI** so it's `uvx digitakt-mcp` with no clone.
+- [x] **Publish to PyPI** as `digitakt-digitone-mcp` (`uvx digitakt-digitone-mcp digitakt`,
+      no clone). Releases also list both servers in the MCP Registry.
 - [ ] Kit / sound-lock parameters.
 
 ## Notes on the ecosystem

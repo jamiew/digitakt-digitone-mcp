@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.jpg" width="100%"
+  <img src="https://raw.githubusercontent.com/jamiew/digitakt-digitone-mcp/main/docs/assets/banner.jpg" width="100%"
        alt="Two matte-black hardware instruments facing each other in the dark, displays glowing amber, with orange and turquoise threads of light arcing between them and blending in the middle">
 </p>
 
@@ -27,19 +27,26 @@ storage and its own tool list. Installing only the Digitakt costs you nothing fo
 > **Digitakt II** or **Digitone II**. The mk2 machines have different track counts, more
 > LFOs, and different parameter maps — see [Other Elektron devices](#other-elektron-devices).
 
+Unofficial: not affiliated with or endorsed by Elektron Music Machines. Digitakt and
+Digitone are trademarks of Elektron.
+
 ---
 
 ## Install
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/). `uvx` fetches the package from PyPI, so
+there's nothing to clone:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # if you don't have uv
 
-git clone https://github.com/jamiew/digitakt-digitone-mcp
-cd digitakt-digitone-mcp
-uv sync
+claude mcp add digitakt -- uvx digitakt-digitone-mcp digitakt
+claude mcp add digitone -- uvx digitakt-digitone-mcp digitone
 ```
+
+Other MCP clients use the same command, e.g.
+`{"command": "uvx", "args": ["digitakt-digitone-mcp", "digitakt"]}`. To run from a
+checkout instead, `git clone` this repo, `uv sync`, and use the per-device setup below.
 
 Connect the device over USB first. Ports are matched by name, so there's nothing to
 configure as long as it appears as "Elektron Digitakt" / "Elektron Digitone" — on macOS
@@ -448,6 +455,13 @@ tokens. The module layout is in [PLAN.md](PLAN.md#architecture).
 
 To check by ear on a real Digitakt, run `uv run python -m harness digitakt smoke`.
 
+### Releasing
+
+Bump `version` in `pyproject.toml`, push, then publish a GitHub release tagged
+`vX.Y.Z`. `.github/workflows/publish.yml` checks the tag, runs the tests, publishes to
+PyPI, and lists both servers in the MCP Registry from `server.digitakt.json` and
+`server.digitone.json`. Those files' versions are filled in from the tag.
+
 ---
 
 ## Credits and references
@@ -493,3 +507,6 @@ No code was copied from the GPL/AGPL projects listed above; they were read as re
 ## License
 
 MIT
+
+<!-- mcp-name: io.github.jamiew/digitakt-mcp -->
+<!-- mcp-name: io.github.jamiew/digitone-mcp -->

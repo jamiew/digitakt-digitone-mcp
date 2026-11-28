@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.jamiew/digitone-mcp",
+  "title": "Digitone",
+  "description": "Play an original Elektron Digitone over MIDI: FM synth tracks, parameters, synced patterns",
+  "repository": {
+    "url": "https://github.com/jamiew/digitakt-digitone-mcp",
+    "source": "github"
+  },
+  "version": "0.6.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "digitakt-digitone-mcp",
+      "version": "0.6.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "digitone"
+        }
+      ]
+    }
+  ]
+}
